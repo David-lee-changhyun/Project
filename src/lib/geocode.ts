@@ -7,6 +7,7 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string |
         // Nominatim 사용 정책상 식별 가능한 User-Agent 필요
         "User-Agent": "shared-album-app/1.0 (personal couple photo album)",
       },
+      signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) return null;
 

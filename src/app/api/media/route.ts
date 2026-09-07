@@ -40,8 +40,12 @@ export async function POST(req: NextRequest) {
   const longitude = longitudeRaw ? Number(longitudeRaw) : null;
 
   // 사진 GPS 정보가 있으면 장소명을 자동으로 채움 (수동 입력 없음)
-  const locationName =
-    latitude !== null && longitude !== null ? await reverseGeocode(latitude, longitude) : null;
+  // 지명 변환(외부 API)이 실패해도 좌표는 있으니 장소 정보 자체가 사라지지 않도록 좌표로 대체
+  let locationName: string | null = null;
+  if (latitude !== null && longitude !== null) {
+    locationName = await reverseGeocode(latitude, longitude);
+    if (!locationName) locationName = `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`;
+  }
 
   const mediaId = newId("media");
   const r2Key = buildR2Key(user.id, mediaId, file.name || "upload");
