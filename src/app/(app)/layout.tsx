@@ -13,7 +13,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <Sidebar displayName={user.displayName} />
 
       <div className="flex min-h-screen flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex items-center justify-between hairline-b bg-surface-elevated px-4 pb-3 pt-5 backdrop-blur-xl safe-top md:hidden">
+        <header className="sticky top-0 z-20 flex items-center justify-between hairline-b bg-surface-elevated px-4 py-4 backdrop-blur-xl safe-top md:hidden">
           <h1 className="text-[19px] font-semibold tracking-tight">우리 앨범</h1>
           <div className="flex items-center gap-4">
             <span className="text-[13px] text-muted">{user.displayName}</span>
