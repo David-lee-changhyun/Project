@@ -4,8 +4,7 @@ import { useEffect, useCallback } from "react";
 import { X, Download, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import type { MediaItem } from "@/lib/types";
 
-const iconBtn =
-  "tap-scale flex h-9 w-9 items-center justify-center rounded-full bg-white/12 text-white backdrop-blur-md";
+const iconBtn = "glass-dark tap-scale flex h-9 w-9 items-center justify-center rounded-full text-white";
 
 export default function Lightbox({
   items,
@@ -52,7 +51,10 @@ export default function Lightbox({
         </button>
         <div className="text-center text-[12px] leading-tight text-white/65">
           <div>{new Date(item.takenAt).toLocaleString("ko-KR")}</div>
-          {item.locationName && <div>{item.locationName}</div>}
+          <div>
+            {item.ownerName}
+            {item.locationName ? ` · ${item.locationName}` : ""}
+          </div>
         </div>
         <div className="flex gap-2.5">
           <a href={`${src}?download=1`} className={iconBtn} aria-label="다운로드">

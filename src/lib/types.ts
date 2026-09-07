@@ -11,6 +11,8 @@ export type MediaItem = {
   latitude: number | null;
   longitude: number | null;
   createdAt: number;
+  ownerId: string;
+  ownerName: string;
   tags: string[];
 };
 

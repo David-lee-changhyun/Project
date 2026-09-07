@@ -1,21 +1,5 @@
 import { newId } from "@/lib/ids";
 
-export type MediaItem = {
-  id: string;
-  type: "photo" | "video";
-  contentType: string;
-  fileName: string;
-  sizeBytes: number;
-  width: number | null;
-  height: number | null;
-  takenAt: number;
-  locationName: string | null;
-  latitude: number | null;
-  longitude: number | null;
-  createdAt: number;
-  tags: string[];
-};
-
 export function buildR2Key(userId: string, mediaId: string, fileName: string) {
   const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-100);
   return `media/${userId}/${mediaId}/${safeName}`;
@@ -58,21 +42,4 @@ export async function attachTags(db: D1Database, mediaId: string, tagNames: stri
       .bind(mediaId, tag.id)
       .run();
   }
-}
-
-export function rowToMediaItem(row: Record<string, unknown>): Omit<MediaItem, "tags"> {
-  return {
-    id: row.id as string,
-    type: row.type as "photo" | "video",
-    contentType: row.contentType as string,
-    fileName: row.fileName as string,
-    sizeBytes: row.sizeBytes as number,
-    width: (row.width as number) ?? null,
-    height: (row.height as number) ?? null,
-    takenAt: row.takenAt as number,
-    locationName: (row.locationName as string) ?? null,
-    latitude: (row.latitude as number) ?? null,
-    longitude: (row.longitude as number) ?? null,
-    createdAt: row.createdAt as number,
-  };
 }

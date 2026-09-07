@@ -148,8 +148,9 @@ export default function CalendarView() {
         <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center">
           <form
             onSubmit={addEvent}
-            className="w-full max-w-sm rounded-t-[20px] bg-surface p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:rounded-[20px] sm:pb-5"
+            className="w-full max-w-sm rounded-t-[28px] bg-surface p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:rounded-[28px] sm:pb-5"
           >
+            <div className="sheet-handle sm:hidden" />
             <h3 className="mb-4 text-[17px] font-semibold">일정 추가</h3>
             <div className="mb-5 overflow-hidden rounded-[14px]">
               <input

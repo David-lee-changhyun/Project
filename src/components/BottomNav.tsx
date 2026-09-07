@@ -14,20 +14,20 @@ export default function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="sticky bottom-0 z-20 hairline-t bg-surface-elevated backdrop-blur-xl safe-bottom md:hidden">
-      <div className="mx-auto flex max-w-2xl">
+    <nav className="fixed inset-x-0 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-20 flex justify-center px-6 md:hidden">
+      <div className="glass flex w-full max-w-[340px] justify-around rounded-full px-2 py-2">
         {tabs.map(({ href, label, Icon }) => {
           const active = pathname === href;
           return (
             <Link
               key={href}
               href={href}
-              className={`tap-scale flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${
+              className={`tap-scale flex flex-1 flex-col items-center gap-0.5 rounded-full py-1.5 text-[10px] font-medium ${
                 active ? "text-accent" : "text-muted"
               }`}
             >
               <Icon
-                className="h-[26px] w-[26px]"
+                className="h-[23px] w-[23px]"
                 strokeWidth={active ? 2.2 : 1.8}
                 fill={active ? "currentColor" : "none"}
                 fillOpacity={active ? 0.12 : 0}

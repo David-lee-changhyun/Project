@@ -95,6 +95,7 @@ export async function GET(req: NextRequest) {
   const tag = searchParams.get("tag");
   const location = searchParams.get("location");
   const type = searchParams.get("type");
+  const uploader = searchParams.get("uploader"); // owner_id로 업로더 필터 (전체/나/상대방)
 
   const db = await getDb();
 
@@ -113,6 +114,10 @@ export async function GET(req: NextRequest) {
     conditions.push("m.type = ?");
     params.push(type);
   }
+  if (uploader) {
+    conditions.push("m.owner_id = ?");
+    params.push(uploader);
+  }
   if (tag) {
     conditions.push(
       "m.id IN (SELECT mt.media_id FROM media_tags mt JOIN tags t ON t.id = mt.tag_id WHERE t.name = ?)"
@@ -127,8 +132,9 @@ export async function GET(req: NextRequest) {
       `SELECT m.id as id, m.type as type, m.content_type as contentType, m.file_name as fileName,
               m.size_bytes as sizeBytes, m.width as width, m.height as height, m.taken_at as takenAt,
               m.location_name as locationName, m.latitude as latitude, m.longitude as longitude,
-              m.created_at as createdAt
+              m.created_at as createdAt, m.owner_id as ownerId, u.display_name as ownerName
        FROM media m
+       JOIN users u ON u.id = m.owner_id
        ${where}
        ORDER BY m.taken_at DESC
        LIMIT ?`
@@ -173,6 +179,8 @@ export async function GET(req: NextRequest) {
     latitude: r.latitude,
     longitude: r.longitude,
     createdAt: r.createdAt,
+    ownerId: r.ownerId,
+    ownerName: r.ownerName,
     tags: tagsByMedia.get(r.id as string) ?? [],
   }));
 

@@ -21,6 +21,8 @@ type Props = {
   filterLocation?: string;
 };
 
+type UserOption = { id: string; displayName: string };
+
 export default function Timeline({ filterTag, filterLocation }: Props) {
   const [items, setItems] = useState<MediaItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -34,7 +36,19 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(
     null
   );
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [users, setUsers] = useState<UserOption[]>([]);
+  const [uploaderFilter, setUploaderFilter] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.json() as Promise<{ user: { id: string } | null }>)
+      .then((d) => d.user && setCurrentUserId(d.user.id));
+    fetch("/api/users")
+      .then((r) => r.json() as Promise<{ users: UserOption[] }>)
+      .then((d) => setUsers(d.users ?? []));
+  }, []);
 
   const query = useCallback(
     (after?: string | null) => {
@@ -42,9 +56,10 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
       if (after) params.set("cursor", after);
       if (filterTag) params.set("tag", filterTag);
       if (filterLocation) params.set("location", filterLocation);
+      if (uploaderFilter) params.set("uploader", uploaderFilter);
       return `/api/media?${params.toString()}`;
     },
-    [filterTag, filterLocation]
+    [filterTag, filterLocation, uploaderFilter]
   );
 
   const load = useCallback(
@@ -63,6 +78,11 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트/필터 변경 시 최초 로드
     load(null);
   }, [load]);
+
+  const uploaderSegments = [
+    { id: null as string | null, label: "전체" },
+    ...users.map((u) => ({ id: u.id, label: u.id === currentUserId ? "나" : u.displayName })),
+  ];
 
   function toggleSelect(id: string) {
     setSelected((prev) => {
@@ -168,18 +188,39 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
   return (
     <div className="flex flex-1 flex-col">
       <div className="flex items-center justify-between px-4 py-2">
-        <button
-          onClick={() => {
-            setSelectMode((v) => !v);
-            setSelected(new Set());
-          }}
-          className="tap-scale text-[15px] font-medium text-accent"
-        >
-          {selectMode ? "취소" : "선택"}
-        </button>
-        {selectMode && (
-          <span className="text-[13px] text-muted">{selected.size}개 선택됨</span>
+        {users.length > 1 && !selectMode ? (
+          <div className="glass flex gap-0.5 rounded-full p-0.5">
+            {uploaderSegments.map((seg) => (
+              <button
+                key={seg.id ?? "all"}
+                onClick={() => setUploaderFilter(seg.id)}
+                className={`tap-scale rounded-full px-3 py-1 text-[13px] font-medium ${
+                  uploaderFilter === seg.id
+                    ? "bg-accent text-white"
+                    : "text-muted"
+                }`}
+              >
+                {seg.label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <span />
         )}
+        <div className="flex items-center gap-3">
+          {selectMode && (
+            <span className="text-[13px] text-muted">{selected.size}개 선택됨</span>
+          )}
+          <button
+            onClick={() => {
+              setSelectMode((v) => !v);
+              setSelected(new Set());
+            }}
+            className="tap-scale text-[15px] font-medium text-accent"
+          >
+            {selectMode ? "취소" : "선택"}
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto pb-24 md:pb-10">
@@ -197,6 +238,8 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
                     item={item}
                     selectMode={selectMode}
                     selected={selected.has(item.id)}
+                    isMine={item.ownerId === currentUserId}
+                    showUploader={users.length > 1}
                     onClick={() => onThumbClick(globalIndex)}
                   />
                 );
@@ -227,8 +270,8 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
       </div>
 
       {selectMode && selected.size > 0 && (
-        <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-20 flex justify-center px-4 md:bottom-6">
-          <div className="flex items-center gap-1 rounded-full bg-surface-elevated px-2 py-1.5 shadow-[0_4px_20px_rgba(0,0,0,0.15)] ring-1 ring-border backdrop-blur-xl">
+        <div className="fixed inset-x-0 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-20 flex justify-center px-4 md:bottom-6">
+          <div className="glass flex items-center gap-1 rounded-full px-2 py-1.5">
             <button
               onClick={handleBulkDownload}
               className="tap-scale flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[14px] font-medium text-accent"
@@ -257,7 +300,7 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
       />
       <button
         onClick={() => fileInputRef.current?.click()}
-        className="tap-scale fixed bottom-20 right-4 z-20 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-white shadow-[0_4px_16px_rgba(0,122,255,0.4)] safe-bottom md:bottom-6 md:right-6"
+        className="tap-scale fixed bottom-24 right-4 z-20 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_4px_16px_rgba(0,122,255,0.45)] ring-1 ring-white/20 safe-bottom md:bottom-6 md:right-6"
         aria-label="사진/동영상 업로드"
       >
         <Plus className="h-6 w-6" strokeWidth={2.4} />
@@ -265,7 +308,8 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
 
       {pendingFiles && (
         <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center">
-          <div className="w-full max-w-sm rounded-t-[20px] bg-surface p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:rounded-[20px] sm:pb-5">
+          <div className="w-full max-w-sm rounded-t-[28px] bg-surface p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:rounded-[28px] sm:pb-5">
+            <div className="sheet-handle sm:hidden" />
             <h3 className="mb-4 text-[17px] font-semibold">
               {pendingFiles.length}개 업로드
             </h3>
