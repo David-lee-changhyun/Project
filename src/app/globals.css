@@ -1,23 +1,33 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f7f7f8;
+  /* iOS 시스템 그룹 배경/서피스 톤 */
+  --background: #f2f2f7;
   --surface: #ffffff;
-  --foreground: #1c1c1e;
+  --surface-elevated: rgba(255, 255, 255, 0.82);
+  --foreground: #000000;
   --muted: #8e8e93;
-  --border: #e5e5ea;
-  --accent: #ff2d55;
-  --accent-2: #0a84ff;
+  --muted-2: #c7c7cc;
+  --border: rgba(60, 60, 67, 0.13);
+
+  /* iOS 시스템 컬러 */
+  --accent: #007aff; /* systemBlue: 주요 액션 */
+  --accent-pink: #ff375f; /* systemPink: 하트/기념일 포인트 */
+  --danger: #ff3b30; /* systemRed: 삭제 등 파괴적 액션 */
+  --overlay-scrim: rgba(0, 0, 0, 0.55);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
+  --color-muted-2: var(--muted-2);
   --color-border: var(--border);
   --color-accent: var(--accent);
-  --color-accent-2: var(--accent-2);
+  --color-accent-pink: var(--accent-pink);
+  --color-danger: var(--danger);
   --font-sans: var(--font-app-sans);
 }
 
@@ -25,14 +35,20 @@
   :root {
     --background: #000000;
     --surface: #1c1c1e;
-    --foreground: #f2f2f7;
+    --surface-elevated: rgba(28, 28, 30, 0.78);
+    --foreground: #ffffff;
     --muted: #98989f;
-    --border: #2c2c2e;
+    --muted-2: #48484a;
+    --border: rgba(84, 84, 88, 0.45);
+    --accent: #0a84ff;
+    --accent-pink: #ff375f;
+    --danger: #ff453a;
   }
 }
 
 * {
   -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
 }
 
 html,
@@ -46,6 +62,7 @@ body {
   font-family: var(--font-app-sans), -apple-system, BlinkMacSystemFont, "SF Pro Text",
     "Segoe UI", Roboto, sans-serif;
   overscroll-behavior-y: none;
+  -webkit-font-smoothing: antialiased;
 }
 
 ::-webkit-scrollbar {
@@ -57,4 +74,21 @@ body {
 }
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* iOS 스타일 얇은 구분선 (1px, 반투명) */
+.hairline-b {
+  border-bottom: 0.5px solid var(--border);
+}
+.hairline-t {
+  border-top: 0.5px solid var(--border);
+}
+
+/* 버튼 탭 시 살짝 눌리는 iOS 느낌 */
+.tap-scale {
+  transition: transform 0.12s ease, opacity 0.12s ease;
+}
+.tap-scale:active {
+  transform: scale(0.96);
+  opacity: 0.7;
 }

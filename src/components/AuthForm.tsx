@@ -38,61 +38,78 @@ export default function AuthForm({ mode }: { mode: Mode }) {
     }
   }
 
-  const inputClass =
-    "w-full rounded-xl border border-border bg-background px-4 py-3 text-[15px] text-foreground outline-none focus:border-accent-2";
+  const rowClass = "w-full bg-surface px-4 py-3 text-[17px] text-foreground outline-none";
+
+  const fields = [
+    mode === "signup" && (
+      <input
+        key="name"
+        className={rowClass}
+        placeholder="이름 (예: 민준)"
+        value={displayName}
+        onChange={(e) => setDisplayName(e.target.value)}
+        required
+      />
+    ),
+    <input
+      key="email"
+      className={rowClass}
+      type="email"
+      placeholder="이메일"
+      value={email}
+      onChange={(e) => setEmail(e.target.value)}
+      autoComplete="email"
+      required
+    />,
+    <input
+      key="password"
+      className={rowClass}
+      type="password"
+      placeholder="비밀번호 (8자 이상)"
+      value={password}
+      onChange={(e) => setPassword(e.target.value)}
+      autoComplete={mode === "signup" ? "new-password" : "current-password"}
+      minLength={8}
+      required
+    />,
+    mode === "signup" && (
+      <input
+        key="invite"
+        className={rowClass}
+        placeholder="초대 코드"
+        value={inviteCode}
+        onChange={(e) => setInviteCode(e.target.value)}
+      />
+    ),
+  ].filter(Boolean);
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-3">
-      {mode === "signup" && (
-        <input
-          className={inputClass}
-          placeholder="이름 (예: 민준)"
-          value={displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
-          required
-        />
-      )}
-      <input
-        className={inputClass}
-        type="email"
-        placeholder="이메일"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        autoComplete="email"
-        required
-      />
-      <input
-        className={inputClass}
-        type="password"
-        placeholder="비밀번호 (8자 이상)"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        autoComplete={mode === "signup" ? "new-password" : "current-password"}
-        minLength={8}
-        required
-      />
-      {mode === "signup" && (
-        <input
-          className={inputClass}
-          placeholder="초대 코드"
-          value={inviteCode}
-          onChange={(e) => setInviteCode(e.target.value)}
-        />
-      )}
-      {error && <p className="text-sm text-accent">{error}</p>}
-      <button
-        type="submit"
-        disabled={loading}
-        className="mt-2 rounded-xl bg-accent py-3 text-[15px] font-medium text-white disabled:opacity-50"
-      >
-        {loading ? "처리 중..." : mode === "signup" ? "가입하기" : "로그인"}
-      </button>
-      <a
-        href={mode === "signup" ? "/login" : "/signup"}
-        className="mt-1 text-center text-sm text-accent-2"
-      >
-        {mode === "signup" ? "이미 계정이 있어요" : "처음이신가요? 계정 만들기"}
-      </a>
+    <form onSubmit={onSubmit} className="flex flex-col gap-6">
+      <div className="overflow-hidden rounded-[14px]">
+        {fields.map((field, i) => (
+          <div key={i} className={i > 0 ? "hairline-t" : ""}>
+            {field}
+          </div>
+        ))}
+      </div>
+
+      {error && <p className="-mt-2 text-center text-[13px] text-danger">{error}</p>}
+
+      <div className="flex flex-col gap-4">
+        <button
+          type="submit"
+          disabled={loading}
+          className="tap-scale rounded-[14px] bg-accent py-3.5 text-[17px] font-semibold text-white disabled:opacity-40"
+        >
+          {loading ? "처리 중..." : mode === "signup" ? "가입하기" : "로그인"}
+        </button>
+        <a
+          href={mode === "signup" ? "/login" : "/signup"}
+          className="text-center text-[15px] text-accent"
+        >
+          {mode === "signup" ? "이미 계정이 있어요" : "처음이신가요? 계정 만들기"}
+        </a>
+      </div>
     </form>
   );
 }

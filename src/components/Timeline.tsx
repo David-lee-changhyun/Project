@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { format, isToday, isYesterday } from "date-fns";
 import { ko } from "date-fns/locale";
+import { Plus, Download, Trash2, Image as ImageIcon } from "lucide-react";
 import type { MediaItem } from "@/lib/types";
 import MediaThumb from "@/components/MediaThumb";
 import Lightbox from "@/components/Lightbox";
@@ -172,17 +173,21 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
             setSelectMode((v) => !v);
             setSelected(new Set());
           }}
-          className="text-sm font-medium text-accent-2"
+          className="tap-scale text-[15px] font-medium text-accent"
         >
           {selectMode ? "취소" : "선택"}
         </button>
-        {selectMode && <span className="text-sm text-muted">{selected.size}개 선택됨</span>}
+        {selectMode && (
+          <span className="text-[13px] text-muted">{selected.size}개 선택됨</span>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto pb-24">
         {groups.map((group) => (
           <div key={group.label}>
-            <h2 className="px-4 pb-1 pt-2 text-sm font-semibold text-muted">{group.label}</h2>
+            <h2 className="px-4 pb-1.5 pt-3 text-[13px] font-semibold text-muted">
+              {group.label}
+            </h2>
             <div className="grid grid-cols-3 gap-0.5 px-0.5">
               {group.items.map((item) => {
                 const globalIndex = items.indexOf(item);
@@ -201,10 +206,10 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
         ))}
 
         {!loading && items.length === 0 && (
-          <div className="flex flex-col items-center gap-2 px-6 py-24 text-center text-muted">
-            <span className="text-4xl">📷</span>
-            <p>아직 사진이나 동영상이 없어요.</p>
-            <p className="text-sm">오른쪽 아래 + 버튼으로 첫 추억을 올려보세요.</p>
+          <div className="flex flex-col items-center gap-3 px-6 py-24 text-center text-muted">
+            <ImageIcon className="h-10 w-10" strokeWidth={1.3} />
+            <p className="text-[15px]">아직 사진이나 동영상이 없어요.</p>
+            <p className="text-[13px]">오른쪽 아래 + 버튼으로 첫 추억을 올려보세요.</p>
           </div>
         )}
 
@@ -213,7 +218,7 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
             <button
               onClick={() => load(cursor)}
               disabled={loading}
-              className="rounded-full border border-border px-4 py-2 text-sm text-muted"
+              className="tap-scale rounded-full bg-surface px-4 py-2 text-[13px] text-muted"
             >
               {loading ? "불러오는 중..." : "더 보기"}
             </button>
@@ -222,13 +227,21 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
       </div>
 
       {selectMode && selected.size > 0 && (
-        <div className="fixed inset-x-0 bottom-16 z-20 flex justify-center safe-bottom">
-          <div className="mx-4 flex gap-2 rounded-full bg-surface px-4 py-2 shadow-lg ring-1 ring-border">
-            <button onClick={handleBulkDownload} className="px-3 py-1 text-sm text-accent-2">
-              ⬇️ 다운로드
+        <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-20 flex justify-center px-4">
+          <div className="flex items-center gap-1 rounded-full bg-surface-elevated px-2 py-1.5 shadow-[0_4px_20px_rgba(0,0,0,0.15)] ring-1 ring-border backdrop-blur-xl">
+            <button
+              onClick={handleBulkDownload}
+              className="tap-scale flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[14px] font-medium text-accent"
+            >
+              <Download className="h-[17px] w-[17px]" strokeWidth={2} />
+              다운로드
             </button>
-            <button onClick={handleBulkDelete} className="px-3 py-1 text-sm text-accent">
-              🗑️ 삭제
+            <button
+              onClick={handleBulkDelete}
+              className="tap-scale flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[14px] font-medium text-danger"
+            >
+              <Trash2 className="h-[17px] w-[17px]" strokeWidth={2} />
+              삭제
             </button>
           </div>
         </div>
@@ -244,56 +257,60 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
       />
       <button
         onClick={() => fileInputRef.current?.click()}
-        className="fixed bottom-20 right-4 z-20 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-2xl text-white shadow-lg safe-bottom"
+        className="tap-scale fixed bottom-20 right-4 z-20 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-white shadow-[0_4px_16px_rgba(0,122,255,0.4)] safe-bottom"
         aria-label="사진/동영상 업로드"
       >
-        +
+        <Plus className="h-6 w-6" strokeWidth={2.4} />
       </button>
 
       {pendingFiles && (
         <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center">
-          <div className="w-full max-w-sm rounded-t-2xl bg-surface p-5 sm:rounded-2xl">
-            <h3 className="mb-3 text-base font-semibold">
+          <div className="w-full max-w-sm rounded-t-[20px] bg-surface p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:rounded-[20px] sm:pb-5">
+            <h3 className="mb-4 text-[17px] font-semibold">
               {pendingFiles.length}개 업로드
             </h3>
             {uploadProgress ? (
-              <div className="mb-4">
-                <div className="mb-1 h-2 w-full overflow-hidden rounded-full bg-border">
+              <div className="mb-2">
+                <div className="mb-1.5 h-1.5 w-full overflow-hidden rounded-full bg-border">
                   <div
-                    className="h-full bg-accent-2 transition-all"
+                    className="h-full bg-accent transition-all"
                     style={{
                       width: `${(uploadProgress.done / uploadProgress.total) * 100}%`,
                     }}
                   />
                 </div>
-                <p className="text-xs text-muted">
+                <p className="text-[13px] text-muted">
                   {uploadProgress.done} / {uploadProgress.total}
                 </p>
               </div>
             ) : (
               <>
-                <input
-                  className="mb-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
-                  placeholder="태그 (쉼표로 구분, 예: 여행,제주도)"
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                />
-                <input
-                  className="mb-4 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
-                  placeholder="장소 (예: 제주도)"
-                  value={locationInput}
-                  onChange={(e) => setLocationInput(e.target.value)}
-                />
-                <div className="flex gap-2">
+                <div className="mb-5 overflow-hidden rounded-[14px]">
+                  <input
+                    className="w-full bg-background px-4 py-3 text-[15px] outline-none"
+                    placeholder="태그 (쉼표로 구분, 예: 여행,제주도)"
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                  />
+                  <div className="hairline-t">
+                    <input
+                      className="w-full bg-background px-4 py-3 text-[15px] outline-none"
+                      placeholder="장소 (예: 제주도)"
+                      value={locationInput}
+                      onChange={(e) => setLocationInput(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-3">
                   <button
                     onClick={() => setPendingFiles(null)}
-                    className="flex-1 rounded-xl border border-border py-2.5 text-sm"
+                    className="tap-scale flex-1 rounded-[14px] bg-background py-3 text-[15px] font-medium text-foreground"
                   >
                     취소
                   </button>
                   <button
                     onClick={startUpload}
-                    className="flex-1 rounded-xl bg-accent py-2.5 text-sm font-medium text-white"
+                    className="tap-scale flex-1 rounded-[14px] bg-accent py-3 text-[15px] font-semibold text-white"
                   >
                     업로드
                   </button>

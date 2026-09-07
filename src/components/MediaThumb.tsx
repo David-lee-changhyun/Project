@@ -1,5 +1,6 @@
 "use client";
 
+import { Play, Check } from "lucide-react";
 import type { MediaItem } from "@/lib/types";
 
 export default function MediaThumb({
@@ -19,7 +20,7 @@ export default function MediaThumb({
     <button
       type="button"
       onClick={onClick}
-      className="relative aspect-square w-full overflow-hidden bg-border"
+      className="relative aspect-square w-full overflow-hidden bg-muted-2"
     >
       {item.type === "video" ? (
         <video src={src} className="h-full w-full object-cover" preload="metadata" muted />
@@ -29,26 +30,24 @@ export default function MediaThumb({
       )}
 
       {item.type === "video" && (
-        <span className="absolute bottom-1 right-1 rounded bg-black/60 px-1 text-[10px] text-white">
-          ▶ 동영상
+        <span className="absolute bottom-1.5 right-1.5 flex items-center gap-0.5 rounded-full bg-black/45 px-1.5 py-0.5 text-white backdrop-blur-sm">
+          <Play className="h-3 w-3" fill="white" strokeWidth={0} />
         </span>
       )}
+
+      {selectMode && <span className="absolute inset-0 bg-black/10" />}
 
       {selectMode && (
         <span
-          className={`absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full border-2 text-[11px] font-bold ${
-            selected
-              ? "border-accent-2 bg-accent-2 text-white"
-              : "border-white/90 bg-black/20 text-transparent"
+          className={`absolute right-1.5 top-1.5 flex h-[22px] w-[22px] items-center justify-center rounded-full border-[1.5px] ${
+            selected ? "border-accent bg-accent" : "border-white/95 bg-black/15"
           }`}
         >
-          ✓
+          {selected && <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />}
         </span>
       )}
 
-      {selectMode && selected && (
-        <span className="absolute inset-0 bg-accent-2/25" />
-      )}
+      {selectMode && selected && <span className="absolute inset-0 ring-2 ring-inset ring-accent" />}
     </button>
   );
 }

@@ -9,10 +9,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex min-h-screen flex-1 flex-col bg-background">
-      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border bg-surface/90 px-4 py-3 backdrop-blur safe-top">
-        <h1 className="text-lg font-semibold">우리 앨범</h1>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-muted">{user.displayName}</span>
+      <header className="sticky top-0 z-20 flex items-center justify-between hairline-b bg-surface-elevated px-4 py-3 backdrop-blur-xl safe-top">
+        <h1 className="text-[17px] font-semibold tracking-tight">우리 앨범</h1>
+        <div className="flex items-center gap-4">
+          <span className="text-[13px] text-muted">{user.displayName}</span>
           <LogoutButton />
         </div>
       </header>

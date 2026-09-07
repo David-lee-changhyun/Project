@@ -2,9 +2,54 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Hash, MapPin, ChevronLeft, ChevronRight } from "lucide-react";
 import Timeline from "@/components/Timeline";
 
 type Chip = { name: string; count: number };
+
+function SectionList({
+  title,
+  items,
+  emptyText,
+  Icon,
+  onSelect,
+}: {
+  title: string;
+  items: Chip[];
+  emptyText: string;
+  Icon: typeof Hash;
+  onSelect: (name: string) => void;
+}) {
+  return (
+    <section className="mb-8">
+      <h2 className="mb-2 px-1 text-[13px] font-semibold uppercase tracking-wide text-muted">
+        {title}
+      </h2>
+      {items.length === 0 ? (
+        <p className="px-1 text-[14px] text-muted">{emptyText}</p>
+      ) : (
+        <div className="overflow-hidden rounded-[14px] bg-surface">
+          {items.map((item, i) => (
+            <button
+              key={item.name}
+              onClick={() => onSelect(item.name)}
+              className={`tap-scale flex w-full items-center gap-3 px-4 py-3 text-left ${
+                i > 0 ? "hairline-t" : ""
+              }`}
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/12 text-accent">
+                <Icon className="h-4 w-4" strokeWidth={2} />
+              </span>
+              <span className="flex-1 text-[15px] text-foreground">{item.name}</span>
+              <span className="text-[13px] text-muted">{item.count}</span>
+              <ChevronRight className="h-4 w-4 text-muted-2" strokeWidth={2} />
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
 
 export default function AlbumsBrowser() {
   const router = useRouter();
@@ -28,12 +73,18 @@ export default function AlbumsBrowser() {
   if (tag || location) {
     return (
       <div className="flex flex-1 flex-col">
-        <div className="flex items-center gap-2 px-4 py-3">
-          <button onClick={() => router.push("/albums")} className="text-accent-2">
-            ‹ 앨범
+        <div className="flex items-center gap-1 px-2 py-2">
+          <button
+            onClick={() => router.push("/albums")}
+            className="tap-scale flex items-center gap-0.5 px-2 py-1.5 text-[15px] text-accent"
+          >
+            <ChevronLeft className="h-5 w-5" strokeWidth={2.2} />
+            앨범
           </button>
-          <h2 className="font-semibold">{tag ? `#${tag}` : location}</h2>
         </div>
+        <h2 className="px-4 pb-2 text-[22px] font-bold tracking-tight">
+          {tag ? `#${tag}` : location}
+        </h2>
         <Timeline filterTag={tag ?? undefined} filterLocation={location ?? undefined} />
       </div>
     );
@@ -41,43 +92,20 @@ export default function AlbumsBrowser() {
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-4">
-      <section className="mb-8">
-        <h2 className="mb-3 text-base font-semibold">태그</h2>
-        {tags.length === 0 ? (
-          <p className="text-sm text-muted">아직 태그가 없어요. 업로드할 때 태그를 추가해보세요.</p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {tags.map((t) => (
-              <button
-                key={t.name}
-                onClick={() => router.push(`/albums?tag=${encodeURIComponent(t.name)}`)}
-                className="rounded-full bg-surface px-4 py-2 text-sm ring-1 ring-border"
-              >
-                #{t.name} <span className="text-muted">{t.count}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section>
-        <h2 className="mb-3 text-base font-semibold">장소</h2>
-        {locations.length === 0 ? (
-          <p className="text-sm text-muted">아직 장소 정보가 없어요.</p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {locations.map((l) => (
-              <button
-                key={l.name}
-                onClick={() => router.push(`/albums?location=${encodeURIComponent(l.name)}`)}
-                className="rounded-full bg-surface px-4 py-2 text-sm ring-1 ring-border"
-              >
-                📍 {l.name} <span className="text-muted">{l.count}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </section>
+      <SectionList
+        title="태그"
+        items={tags}
+        emptyText="아직 태그가 없어요. 업로드할 때 태그를 추가해보세요."
+        Icon={Hash}
+        onSelect={(name) => router.push(`/albums?tag=${encodeURIComponent(name)}`)}
+      />
+      <SectionList
+        title="장소"
+        items={locations}
+        emptyText="아직 장소 정보가 없어요."
+        Icon={MapPin}
+        onSelect={(name) => router.push(`/albums?location=${encodeURIComponent(name)}`)}
+      />
     </div>
   );
 }
