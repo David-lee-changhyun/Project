@@ -14,6 +14,7 @@ export type MediaItem = {
   ownerId: string;
   ownerName: string;
   likedAt: number | null;
+  hasThumbnail: boolean;
 };
 
 export type CalendarEvent = {

@@ -19,6 +19,7 @@ export default function MediaThumb({
   onClick: () => void;
 }) {
   const src = `/api/media/${item.id}/file`;
+  const thumbSrc = `${src}?thumb=1`;
 
   return (
     <button
@@ -26,11 +27,11 @@ export default function MediaThumb({
       onClick={onClick}
       className="relative aspect-square w-full overflow-hidden bg-muted-2"
     >
-      {item.type === "video" ? (
+      {item.type === "video" && !item.hasThumbnail ? (
         <video src={src} className="h-full w-full object-cover" preload="metadata" muted />
       ) : (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt="" loading="lazy" className="h-full w-full object-cover" />
+        <img src={thumbSrc} alt="" loading="lazy" className="h-full w-full object-cover" />
       )}
 
       {item.type === "video" && (

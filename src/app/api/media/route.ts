@@ -51,13 +51,23 @@ export async function POST(req: NextRequest) {
     httpMetadata: { contentType: file.type },
   });
 
+  // 그리드에서 빠르게 로드할 작은 미리보기 (클라이언트가 만들어 보낸 경우만)
+  const thumbnail = form.get("thumbnail");
+  let thumbnailR2Key: string | null = null;
+  if (thumbnail instanceof File) {
+    thumbnailR2Key = buildR2Key(user.id, mediaId, `thumb_${file.name || "upload"}.jpg`);
+    await bucket.put(thumbnailR2Key, await thumbnail.arrayBuffer(), {
+      httpMetadata: { contentType: "image/jpeg" },
+    });
+  }
+
   const db = await getDb();
   const now = Date.now();
   await db
     .prepare(
       `INSERT INTO media
-        (id, owner_id, r2_key, type, content_type, file_name, size_bytes, width, height, taken_at, location_name, latitude, longitude, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        (id, owner_id, r2_key, type, content_type, file_name, size_bytes, width, height, taken_at, location_name, latitude, longitude, thumbnail_r2_key, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .bind(
       mediaId,
@@ -73,6 +83,7 @@ export async function POST(req: NextRequest) {
       locationName,
       latitude,
       longitude,
+      thumbnailR2Key,
       now
     )
     .run();
@@ -134,7 +145,7 @@ export async function GET(req: NextRequest) {
               m.size_bytes as sizeBytes, m.width as width, m.height as height, m.taken_at as takenAt,
               m.location_name as locationName, m.latitude as latitude, m.longitude as longitude,
               m.created_at as createdAt, m.owner_id as ownerId, u.display_name as ownerName,
-              m.liked_at as likedAt
+              m.liked_at as likedAt, m.thumbnail_r2_key as thumbnailR2Key
        FROM media m
        JOIN users u ON u.id = m.owner_id
        ${where}
@@ -164,6 +175,7 @@ export async function GET(req: NextRequest) {
     ownerId: r.ownerId,
     ownerName: r.ownerName,
     likedAt: r.likedAt,
+    hasThumbnail: !!r.thumbnailR2Key,
   }));
 
   const nextCursor = hasMore ? String(page[page.length - 1].takenAt) : null;
@@ -189,12 +201,19 @@ export async function DELETE(req: NextRequest) {
   const bucket = await getBucket();
   const placeholders = ids.map(() => "?").join(",");
   const rows = await db
-    .prepare(`SELECT id, r2_key as r2Key FROM media WHERE id IN (${placeholders})`)
+    .prepare(
+      `SELECT id, r2_key as r2Key, thumbnail_r2_key as thumbnailR2Key FROM media WHERE id IN (${placeholders})`
+    )
     .bind(...ids)
-    .all<{ id: string; r2Key: string }>();
+    .all<{ id: string; r2Key: string; thumbnailR2Key: string | null }>();
 
   const found = rows.results ?? [];
-  await Promise.all(found.map((r) => bucket.delete(r.r2Key)));
+  await Promise.all(
+    found.flatMap((r) => [
+      bucket.delete(r.r2Key),
+      ...(r.thumbnailR2Key ? [bucket.delete(r.thumbnailR2Key)] : []),
+    ])
+  );
   await db
     .prepare(`DELETE FROM media WHERE id IN (${placeholders})`)
     .bind(...ids)

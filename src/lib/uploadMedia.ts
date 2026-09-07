@@ -1,4 +1,5 @@
 import * as exifr from "exifr";
+import { makeThumbnail } from "@/lib/thumbnail";
 
 function isHeic(file: File): boolean {
   const type = file.type.toLowerCase();
@@ -53,6 +54,9 @@ export async function uploadOneFile(file: File) {
   // EXIF는 변환 전 원본에서 먼저 추출 (변환 과정에서 메타데이터가 사라짐)
   const [takenAt, gps] = await Promise.all([extractTakenAt(file), extractGps(file)]);
   const uploadFile = isHeic(file) ? await convertHeicToJpeg(file) : file;
+  const type = uploadFile.type.startsWith("video/") ? "video" : "photo";
+  // 타임라인 그리드가 원본 대신 작은 썸네일만 받아오도록 미리 축소본 생성 (실패해도 업로드는 진행)
+  const thumbnail = await makeThumbnail(uploadFile, type).catch(() => null);
 
   const form = new FormData();
   form.set("file", uploadFile);
@@ -61,6 +65,7 @@ export async function uploadOneFile(file: File) {
     form.set("latitude", String(gps.lat));
     form.set("longitude", String(gps.lng));
   }
+  if (thumbnail) form.set("thumbnail", thumbnail);
 
   const res = await fetch("/api/media", { method: "POST", body: form });
   if (!res.ok) {
