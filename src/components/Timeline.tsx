@@ -188,39 +188,35 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
   return (
     <div className="flex flex-1 flex-col">
       <div className="flex items-center justify-between px-4 py-2">
-        {users.length > 1 && !selectMode ? (
-          <div className="glass flex gap-0.5 rounded-full p-0.5">
-            {uploaderSegments.map((seg) => (
-              <button
-                key={seg.id ?? "all"}
-                onClick={() => setUploaderFilter(seg.id)}
-                className={`tap-scale rounded-full px-3 py-1 text-[13px] font-medium ${
-                  uploaderFilter === seg.id
-                    ? "bg-accent text-white"
-                    : "text-muted"
-                }`}
-              >
-                {seg.label}
-              </button>
-            ))}
-          </div>
+        <button
+          onClick={() => {
+            setSelectMode((v) => !v);
+            setSelected(new Set());
+          }}
+          className="tap-scale text-[15px] font-medium text-accent"
+        >
+          {selectMode ? "취소" : "선택"}
+        </button>
+
+        {selectMode ? (
+          <span className="text-[13px] text-muted">{selected.size}개 선택됨</span>
         ) : (
-          <span />
+          users.length > 1 && (
+            <div className="glass flex gap-0.5 rounded-full p-0.5">
+              {uploaderSegments.map((seg) => (
+                <button
+                  key={seg.id ?? "all"}
+                  onClick={() => setUploaderFilter(seg.id)}
+                  className={`tap-scale rounded-full px-3 py-1 text-[13px] font-medium ${
+                    uploaderFilter === seg.id ? "bg-accent text-white" : "text-muted"
+                  }`}
+                >
+                  {seg.label}
+                </button>
+              ))}
+            </div>
+          )
         )}
-        <div className="flex items-center gap-3">
-          {selectMode && (
-            <span className="text-[13px] text-muted">{selected.size}개 선택됨</span>
-          )}
-          <button
-            onClick={() => {
-              setSelectMode((v) => !v);
-              setSelected(new Set());
-            }}
-            className="tap-scale text-[15px] font-medium text-accent"
-          >
-            {selectMode ? "취소" : "선택"}
-          </button>
-        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto pb-24 md:pb-10">
