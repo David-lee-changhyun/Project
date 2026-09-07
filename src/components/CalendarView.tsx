@@ -73,13 +73,13 @@ export default function CalendarView() {
   return (
     <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-4 py-4 md:py-8">
       {primary && (
-        <div className="mb-7 overflow-hidden rounded-[20px] bg-gradient-to-br from-accent-pink to-[#ff6482] p-6 text-center text-white">
-          <div className="mb-2 flex justify-center">
-            <Heart className="h-5 w-5" fill="white" strokeWidth={0} />
-          </div>
-          <p className="text-[13px] font-medium opacity-90">{primary.title}</p>
-          <p className="mt-1 text-[38px] font-bold leading-none tracking-tight">D+{daysSince}</p>
-          <p className="mt-2 text-[12px] opacity-75">
+        <div className="mb-7 overflow-hidden rounded-[20px] bg-gradient-to-br from-[#ffe3ec] to-[#f1e3ff] p-6 text-center">
+          <div className="mb-2 flex justify-center text-[20px]">🩷</div>
+          <p className="text-[13px] font-medium text-[#b3618c]">{primary.title}</p>
+          <p className="mt-1 text-[38px] font-bold leading-none tracking-tight text-accent-pink-deep">
+            D+{daysSince}
+          </p>
+          <p className="mt-2 text-[12px] text-[#c98ba8]">
             {format(new Date(primary.eventDate), "yyyy년 M월 d일", { locale: ko })}부터
           </p>
         </div>

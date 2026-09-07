@@ -12,7 +12,8 @@
 
   /* iOS 시스템 컬러 */
   --accent: #007aff; /* systemBlue: 주요 액션 */
-  --accent-pink: #ff375f; /* systemPink: 하트/기념일 포인트 */
+  --accent-pink: #ffb3c6; /* 파스텔 핑크: 하트/기념일 포인트 */
+  --accent-pink-deep: #d6588f; /* 파스텔 카드 위 텍스트용 (대비 확보) */
   --danger: #ff3b30; /* systemRed: 삭제 등 파괴적 액션 */
   --overlay-scrim: rgba(0, 0, 0, 0.55);
 }
@@ -27,6 +28,7 @@
   --color-border: var(--border);
   --color-accent: var(--accent);
   --color-accent-pink: var(--accent-pink);
+  --color-accent-pink-deep: var(--accent-pink-deep);
   --color-danger: var(--danger);
   --font-sans: var(--font-app-sans);
 }
@@ -41,7 +43,8 @@
     --muted-2: #48484a;
     --border: rgba(84, 84, 88, 0.45);
     --accent: #0a84ff;
-    --accent-pink: #ff375f;
+    --accent-pink: #ff9db8;
+    --accent-pink-deep: #ffb8d2;
     --danger: #ff453a;
   }
 }

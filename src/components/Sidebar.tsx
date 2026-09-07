@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Image as ImageIcon, LayoutGrid, CalendarDays, Heart } from "lucide-react";
+import { Image as ImageIcon, LayoutGrid, CalendarDays } from "lucide-react";
 import LogoutButton from "@/components/LogoutButton";
 
 const tabs = [
@@ -17,8 +17,8 @@ export default function Sidebar({ displayName }: { displayName: string }) {
   return (
     <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col hairline-b border-r border-border bg-surface px-3 py-5 md:flex">
       <div className="mb-6 flex items-center gap-2.5 px-2">
-        <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-accent-pink">
-          <Heart className="h-4 w-4 text-white" fill="white" strokeWidth={0} />
+        <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-[#ffe4ec] text-[17px]">
+          🧸
         </span>
         <span className="text-[16px] font-semibold tracking-tight">우리 앨범</span>
       </div>

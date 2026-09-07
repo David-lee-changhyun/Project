@@ -3,7 +3,7 @@
 import { deflateSync } from "node:zlib";
 import { writeFileSync, mkdirSync } from "node:fs";
 
-const ACCENT = [255, 55, 95]; // #ff375f (systemPink)
+const ACCENT = [255, 179, 198]; // #ffb3c6 (파스텔 핑크)
 
 function crc32(buf) {
   let c;
