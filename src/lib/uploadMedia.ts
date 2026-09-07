@@ -5,8 +5,29 @@ export type UploadOptions = {
   locationName?: string;
 };
 
+function isHeic(file: File): boolean {
+  const type = file.type.toLowerCase();
+  if (type === "image/heic" || type === "image/heif") return true;
+  // 일부 브라우저(특히 안드로이드)는 HEIC를 빈 MIME 타입으로 넘겨서 확장자로도 확인
+  return /\.hei[cf]$/i.test(file.name);
+}
+
+// 아이폰 HEIC 사진을 갤럭시 등에서도 바로 보이도록 업로드 전 JPEG로 변환
+async function convertHeicToJpeg(file: File): Promise<File> {
+  try {
+    const heic2any = (await import("heic2any")).default;
+    const result = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.9 });
+    const blob = Array.isArray(result) ? result[0] : result;
+    const newName = file.name.replace(/\.hei[cf]$/i, "") + ".jpg";
+    return new File([blob], newName, { type: "image/jpeg", lastModified: file.lastModified });
+  } catch {
+    // 변환 실패 시 원본 그대로 업로드 (서버가 사진/동영상 여부만 검사하므로 실패하진 않음)
+    return file;
+  }
+}
+
 async function extractTakenAt(file: File): Promise<number> {
-  if (file.type.startsWith("image/")) {
+  if (file.type.startsWith("image/") || isHeic(file)) {
     try {
       const exif = await exifr.parse(file, ["DateTimeOriginal", "CreateDate"]);
       const date = exif?.DateTimeOriginal ?? exif?.CreateDate;
@@ -21,7 +42,7 @@ async function extractTakenAt(file: File): Promise<number> {
 }
 
 async function extractGps(file: File): Promise<{ lat: number; lng: number } | null> {
-  if (!file.type.startsWith("image/")) return null;
+  if (!file.type.startsWith("image/") && !isHeic(file)) return null;
   try {
     const gps = await exifr.gps(file);
     if (gps && typeof gps.latitude === "number" && typeof gps.longitude === "number") {
@@ -34,10 +55,12 @@ async function extractGps(file: File): Promise<{ lat: number; lng: number } | nu
 }
 
 export async function uploadOneFile(file: File, opts: UploadOptions = {}) {
+  // EXIF는 변환 전 원본에서 먼저 추출 (변환 과정에서 메타데이터가 사라짐)
   const [takenAt, gps] = await Promise.all([extractTakenAt(file), extractGps(file)]);
+  const uploadFile = isHeic(file) ? await convertHeicToJpeg(file) : file;
 
   const form = new FormData();
-  form.set("file", file);
+  form.set("file", uploadFile);
   form.set("takenAt", String(takenAt));
   if (gps) {
     form.set("latitude", String(gps.lat));
