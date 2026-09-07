@@ -3,6 +3,7 @@ import { getDb, getBucket } from "@/lib/cloudflare";
 import { requireUser, AuthError } from "@/lib/auth";
 import { newId } from "@/lib/ids";
 import { buildR2Key, detectType } from "@/lib/media";
+import { sha256Hex } from "@/lib/hash";
 
 const MAX_UPLOAD_BYTES = 200 * 1024 * 1024; // Workers 요청 바디 제한(무료 100MB) 고려, 여유 있게 안내용 상한
 
@@ -43,13 +44,15 @@ export async function POST(req: NextRequest) {
     thumbnail instanceof File ? buildR2Key(user.id, mediaId, `thumb_${file.name || "upload"}.jpg`) : null;
 
   const bucket = await getBucket();
-  await Promise.all([
-    bucket.put(r2Key, await file.arrayBuffer(), { httpMetadata: { contentType: file.type } }),
+  const fileBuffer = await file.arrayBuffer();
+  const [, , contentHash] = await Promise.all([
+    bucket.put(r2Key, fileBuffer, { httpMetadata: { contentType: file.type } }),
     thumbnail instanceof File && thumbnailR2Key
       ? bucket.put(thumbnailR2Key, await thumbnail.arrayBuffer(), {
           httpMetadata: { contentType: "image/jpeg" },
         })
       : Promise.resolve(),
+    sha256Hex(fileBuffer),
   ]);
 
   const db = await getDb();
@@ -57,8 +60,8 @@ export async function POST(req: NextRequest) {
   await db
     .prepare(
       `INSERT INTO media
-        (id, owner_id, r2_key, type, content_type, file_name, size_bytes, width, height, taken_at, thumbnail_r2_key, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        (id, owner_id, r2_key, type, content_type, file_name, size_bytes, width, height, taken_at, thumbnail_r2_key, content_hash, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .bind(
       mediaId,
@@ -72,6 +75,7 @@ export async function POST(req: NextRequest) {
       heightRaw ? Number(heightRaw) : null,
       Number.isFinite(takenAt) ? takenAt : now,
       thumbnailR2Key,
+      contentHash,
       now
     )
     .run();

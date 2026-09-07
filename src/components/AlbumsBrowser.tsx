@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, Heart, FolderClosed, Plus, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Heart, FolderClosed, Plus, Trash2, Copy } from "lucide-react";
 import Timeline from "@/components/Timeline";
 import StatsBar from "@/components/StatsBar";
+import DuplicatesView from "@/components/DuplicatesView";
 import type { Album } from "@/lib/types";
 
 export default function AlbumsBrowser() {
@@ -12,6 +13,7 @@ export default function AlbumsBrowser() {
   const searchParams = useSearchParams();
   const albumId = searchParams.get("album");
   const liked = searchParams.get("liked") === "1";
+  const duplicates = searchParams.get("duplicates") === "1";
 
   const [albums, setAlbums] = useState<Album[]>([]);
   const [albumName, setAlbumName] = useState<string | null>(null);
@@ -32,9 +34,9 @@ export default function AlbumsBrowser() {
   }, []);
 
   useEffect(() => {
-    if (albumId || liked) return;
+    if (albumId || liked || duplicates) return;
     loadAlbums();
-  }, [albumId, liked]);
+  }, [albumId, liked, duplicates]);
 
   useEffect(() => {
     if (!albumId) return;
@@ -62,6 +64,24 @@ export default function AlbumsBrowser() {
     await fetch(`/api/albums/${id}`, { method: "DELETE" });
     loadAlbums();
     return true;
+  }
+
+  if (duplicates) {
+    return (
+      <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-4 py-4 md:py-8">
+        <div className="mb-1 flex items-center gap-1 px-2 py-2">
+          <button
+            onClick={() => router.push("/albums")}
+            className="tap-scale flex items-center gap-0.5 px-2 py-1.5 text-[15px] text-accent"
+          >
+            <ChevronLeft className="h-5 w-5" strokeWidth={2.2} />
+            앨범
+          </button>
+        </div>
+        <h2 className="mb-3 px-1 text-[22px] font-bold tracking-tight">중복 사진</h2>
+        <DuplicatesView />
+      </div>
+    );
   }
 
   if (albumId || liked) {
@@ -99,15 +119,25 @@ export default function AlbumsBrowser() {
 
   return (
     <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-4 py-4 md:py-8">
-      <section className="mb-8">
+      <section className="mb-8 overflow-hidden rounded-[14px] bg-surface">
         <button
           onClick={() => router.push("/albums?liked=1")}
-          className="tap-scale flex w-full items-center gap-3 rounded-[14px] bg-surface px-4 py-3 text-left"
+          className="tap-scale flex w-full items-center gap-3 px-4 py-3 text-left"
         >
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-pink/15 text-accent-pink">
             <Heart className="h-4 w-4" fill="currentColor" strokeWidth={0} />
           </span>
           <span className="flex-1 text-[15px] font-medium text-foreground">좋아요</span>
+          <ChevronRight className="h-4 w-4 text-muted-2" strokeWidth={2} />
+        </button>
+        <button
+          onClick={() => router.push("/albums?duplicates=1")}
+          className="tap-scale flex w-full items-center gap-3 px-4 py-3 text-left hairline-t"
+        >
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/12 text-accent">
+            <Copy className="h-4 w-4" strokeWidth={2} />
+          </span>
+          <span className="flex-1 text-[15px] font-medium text-foreground">중복 사진</span>
           <ChevronRight className="h-4 w-4 text-muted-2" strokeWidth={2} />
         </button>
       </section>
