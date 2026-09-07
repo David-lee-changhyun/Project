@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb, getBucket, getExecutionContext } from "@/lib/cloudflare";
+import { getDb, getBucket } from "@/lib/cloudflare";
 import { requireUser, AuthError } from "@/lib/auth";
 import { newId } from "@/lib/ids";
 import { buildR2Key, detectType } from "@/lib/media";
-import { reverseGeocode } from "@/lib/geocode";
 
 const MAX_UPLOAD_BYTES = 200 * 1024 * 1024; // Workers 요청 바디 제한(무료 100MB) 고려, 여유 있게 안내용 상한
 
@@ -34,15 +33,6 @@ export async function POST(req: NextRequest) {
   const takenAt = takenAtRaw ? Number(takenAtRaw) : Date.now();
   const widthRaw = form.get("width");
   const heightRaw = form.get("height");
-  const latitudeRaw = form.get("latitude");
-  const longitudeRaw = form.get("longitude");
-  const latitude = latitudeRaw ? Number(latitudeRaw) : null;
-  const longitude = longitudeRaw ? Number(longitudeRaw) : null;
-
-  // 지명 변환(외부 API 호출)은 느릴 수 있어 업로드 응답을 막지 않도록 나중에 백그라운드로 처리.
-  // 우선 좌표 문자열로 채워둬서 장소 정보 자체는 바로 보이게 함
-  const locationName =
-    latitude !== null && longitude !== null ? `${latitude.toFixed(3)}, ${longitude.toFixed(3)}` : null;
 
   const mediaId = newId("media");
   const r2Key = buildR2Key(user.id, mediaId, file.name || "upload");
@@ -67,8 +57,8 @@ export async function POST(req: NextRequest) {
   await db
     .prepare(
       `INSERT INTO media
-        (id, owner_id, r2_key, type, content_type, file_name, size_bytes, width, height, taken_at, location_name, latitude, longitude, thumbnail_r2_key, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        (id, owner_id, r2_key, type, content_type, file_name, size_bytes, width, height, taken_at, thumbnail_r2_key, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .bind(
       mediaId,
@@ -81,23 +71,10 @@ export async function POST(req: NextRequest) {
       widthRaw ? Number(widthRaw) : null,
       heightRaw ? Number(heightRaw) : null,
       Number.isFinite(takenAt) ? takenAt : now,
-      locationName,
-      latitude,
-      longitude,
       thumbnailR2Key,
       now
     )
     .run();
-
-  if (latitude !== null && longitude !== null) {
-    const ctx = await getExecutionContext();
-    ctx.waitUntil(
-      reverseGeocode(latitude, longitude).then((name) => {
-        if (!name) return; // 실패하면 좌표 문자열을 그대로 둠
-        return db.prepare("UPDATE media SET location_name = ? WHERE id = ?").bind(name, mediaId).run();
-      })
-    );
-  }
 
   return NextResponse.json({ id: mediaId, takenAt: Number.isFinite(takenAt) ? takenAt : now });
 }
@@ -113,7 +90,6 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const limit = Math.min(Number(searchParams.get("limit") ?? 60) || 60, 100);
   const cursor = searchParams.get("cursor"); // taken_at 기준 cursor (ms)
-  const location = searchParams.get("location");
   const type = searchParams.get("type");
   const uploader = searchParams.get("uploader"); // owner_id로 업로더 필터 (전체/나/상대방)
   const albumId = searchParams.get("album");
@@ -127,10 +103,6 @@ export async function GET(req: NextRequest) {
   if (cursor) {
     conditions.push("m.taken_at < ?");
     params.push(Number(cursor));
-  }
-  if (location) {
-    conditions.push("m.location_name = ?");
-    params.push(location);
   }
   if (type === "photo" || type === "video") {
     conditions.push("m.type = ?");
@@ -154,7 +126,6 @@ export async function GET(req: NextRequest) {
     .prepare(
       `SELECT m.id as id, m.type as type, m.content_type as contentType, m.file_name as fileName,
               m.size_bytes as sizeBytes, m.width as width, m.height as height, m.taken_at as takenAt,
-              m.location_name as locationName, m.latitude as latitude, m.longitude as longitude,
               m.created_at as createdAt, m.owner_id as ownerId, u.display_name as ownerName,
               m.liked_at as likedAt, m.thumbnail_r2_key as thumbnailR2Key
        FROM media m
@@ -179,9 +150,6 @@ export async function GET(req: NextRequest) {
     width: r.width,
     height: r.height,
     takenAt: r.takenAt,
-    locationName: r.locationName,
-    latitude: r.latitude,
-    longitude: r.longitude,
     createdAt: r.createdAt,
     ownerId: r.ownerId,
     ownerName: r.ownerName,

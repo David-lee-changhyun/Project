@@ -29,13 +29,12 @@ const gridColsByMode: Record<ViewMode, string> = {
 
 type Props = {
   filterAlbum?: string;
-  filterLocation?: string;
   filterLiked?: boolean;
 };
 
 type UserOption = { id: string; displayName: string };
 
-export default function Timeline({ filterAlbum, filterLocation, filterLiked }: Props) {
+export default function Timeline({ filterAlbum, filterLiked }: Props) {
   const [items, setItems] = useState<MediaItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -67,12 +66,11 @@ export default function Timeline({ filterAlbum, filterLocation, filterLiked }: P
       const params = new URLSearchParams();
       if (after) params.set("cursor", after);
       if (filterAlbum) params.set("album", filterAlbum);
-      if (filterLocation) params.set("location", filterLocation);
       if (filterLiked) params.set("liked", "1");
       if (uploaderFilter) params.set("uploader", uploaderFilter);
       return `/api/media?${params.toString()}`;
     },
-    [filterAlbum, filterLocation, filterLiked, uploaderFilter]
+    [filterAlbum, filterLiked, uploaderFilter]
   );
 
   const load = useCallback(

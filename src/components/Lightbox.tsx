@@ -54,10 +54,7 @@ export default function Lightbox({
         </button>
         <div className="text-center text-[12px] leading-tight text-white/65">
           <div>{new Date(item.takenAt).toLocaleString("ko-KR")}</div>
-          <div>
-            {item.ownerName}
-            {item.locationName ? ` · ${item.locationName}` : ""}
-          </div>
+          <div>{item.ownerName}</div>
         </div>
         <div className="flex gap-2.5">
           <button

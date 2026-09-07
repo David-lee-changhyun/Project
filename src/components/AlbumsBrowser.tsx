@@ -2,24 +2,22 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { MapPin, ChevronLeft, ChevronRight, Heart, FolderClosed, Plus, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Heart, FolderClosed, Plus, Trash2 } from "lucide-react";
 import Timeline from "@/components/Timeline";
+import StatsBar from "@/components/StatsBar";
 import type { Album } from "@/lib/types";
-
-type LocationChip = { name: string; count: number };
 
 export default function AlbumsBrowser() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const albumId = searchParams.get("album");
-  const location = searchParams.get("location");
   const liked = searchParams.get("liked") === "1";
 
-  const [locations, setLocations] = useState<LocationChip[]>([]);
   const [albums, setAlbums] = useState<Album[]>([]);
   const [albumName, setAlbumName] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   function loadAlbums() {
     fetch("/api/albums")
@@ -28,12 +26,15 @@ export default function AlbumsBrowser() {
   }
 
   useEffect(() => {
-    if (albumId || location || liked) return;
-    fetch("/api/media/locations")
-      .then((r) => r.json() as Promise<{ locations: LocationChip[] }>)
-      .then((d) => setLocations(d.locations ?? []));
+    fetch("/api/auth/me")
+      .then((r) => r.json() as Promise<{ user: { id: string } | null }>)
+      .then((d) => d.user && setCurrentUserId(d.user.id));
+  }, []);
+
+  useEffect(() => {
+    if (albumId || liked) return;
     loadAlbums();
-  }, [albumId, location, liked]);
+  }, [albumId, liked]);
 
   useEffect(() => {
     if (!albumId) return;
@@ -63,8 +64,8 @@ export default function AlbumsBrowser() {
     return true;
   }
 
-  if (albumId || location || liked) {
-    const title = liked ? "좋아요" : albumId ? albumName ?? "앨범" : location;
+  if (albumId || liked) {
+    const title = liked ? "좋아요" : albumName ?? "앨범";
     return (
       <div className="flex flex-1 flex-col">
         <div className="flex items-center gap-1 px-2 py-2">
@@ -91,11 +92,7 @@ export default function AlbumsBrowser() {
             </button>
           )}
         </div>
-        <Timeline
-          filterAlbum={albumId ?? undefined}
-          filterLocation={location ?? undefined}
-          filterLiked={liked}
-        />
+        <Timeline filterAlbum={albumId ?? undefined} filterLiked={liked} />
       </div>
     );
   }
@@ -158,33 +155,7 @@ export default function AlbumsBrowser() {
         )}
       </section>
 
-      <section>
-        <h2 className="mb-2 px-1 text-[13px] font-semibold uppercase tracking-wide text-muted">
-          장소
-        </h2>
-        {locations.length === 0 ? (
-          <p className="px-1 text-[14px] text-muted">GPS 정보가 있는 사진이 아직 없어요.</p>
-        ) : (
-          <div className="overflow-hidden rounded-[14px] bg-surface">
-            {locations.map((l, i) => (
-              <button
-                key={l.name}
-                onClick={() => router.push(`/albums?location=${encodeURIComponent(l.name)}`)}
-                className={`tap-scale flex w-full items-center gap-3 px-4 py-3 text-left ${
-                  i > 0 ? "hairline-t" : ""
-                }`}
-              >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/12 text-accent">
-                  <MapPin className="h-4 w-4" strokeWidth={2} />
-                </span>
-                <span className="flex-1 text-[15px] text-foreground">{l.name}</span>
-                <span className="text-[13px] text-muted">{l.count}</span>
-                <ChevronRight className="h-4 w-4 text-muted-2" strokeWidth={2} />
-              </button>
-            ))}
-          </div>
-        )}
-      </section>
+      <StatsBar currentUserId={currentUserId} />
 
       {showCreate && (
         <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center">

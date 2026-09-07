@@ -37,45 +37,11 @@ async function extractTakenAt(file: File): Promise<number> {
   return file.lastModified || Date.now();
 }
 
-async function extractGps(file: File): Promise<{ lat: number; lng: number } | null> {
-  if (!file.type.startsWith("image/") && !isHeic(file)) return null;
-  try {
-    const gps = await exifr.gps(file);
-    if (gps && typeof gps.latitude === "number" && typeof gps.longitude === "number") {
-      return { lat: gps.latitude, lng: gps.longitude };
-    }
-  } catch {
-    // 위치 정보 없음
-  }
-  return null;
-}
-
-// 아이폰/안드로이드 브라우저는 사진을 웹에 올릴 때 개인정보 보호 차원에서 GPS 태그를 미리 지워서 넘겨줌.
-// 그래서 사진 자체엔 위치가 있어도 우리 코드는 못 읽는 경우가 대부분 — 차선책으로 "지금 업로드하는 위치"를
-// 기기 GPS로 한 번만 물어봐서 대신 사용 (찍은 직후 바로 올리는 경우엔 실제 위치와 거의 같음)
-let deviceLocationPromise: Promise<{ lat: number; lng: number } | null> | null = null;
-function getDeviceLocationOnce(): Promise<{ lat: number; lng: number } | null> {
-  if (!deviceLocationPromise) {
-    deviceLocationPromise = new Promise((resolve) => {
-      if (typeof navigator === "undefined" || !navigator.geolocation) {
-        resolve(null);
-        return;
-      }
-      navigator.geolocation.getCurrentPosition(
-        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        () => resolve(null),
-        { timeout: 5000, maximumAge: 5 * 60 * 1000 }
-      );
-    });
-  }
-  return deviceLocationPromise;
-}
-
 export async function uploadOneFile(file: File) {
-  // EXIF는 변환 전 원본에서 먼저 추출 (변환 과정에서 메타데이터가 사라짐)
-  const [takenAt, exifGps] = await Promise.all([extractTakenAt(file), extractGps(file)]);
-  const gps = exifGps ?? (await getDeviceLocationOnce());
-  const uploadFile = isHeic(file) ? await convertHeicToJpeg(file) : file;
+  const [takenAt, uploadFile] = await Promise.all([
+    extractTakenAt(file),
+    isHeic(file) ? convertHeicToJpeg(file) : Promise.resolve(file),
+  ]);
   const type = uploadFile.type.startsWith("video/") ? "video" : "photo";
   // 타임라인 그리드가 원본 대신 작은 썸네일만 받아오도록 미리 축소본 생성 (실패해도 업로드는 진행)
   const thumbnail = await makeThumbnail(uploadFile, type).catch(() => null);
@@ -83,10 +49,6 @@ export async function uploadOneFile(file: File) {
   const form = new FormData();
   form.set("file", uploadFile);
   form.set("takenAt", String(takenAt));
-  if (gps) {
-    form.set("latitude", String(gps.lat));
-    form.set("longitude", String(gps.lng));
-  }
   if (thumbnail) form.set("thumbnail", thumbnail);
 
   const res = await fetch("/api/media", { method: "POST", body: form });
@@ -101,7 +63,7 @@ export async function uploadOneFile(file: File) {
 export async function uploadFiles(
   files: File[],
   onProgress: (done: number, total: number) => void,
-  concurrency = 3
+  concurrency = 4
 ) {
   let done = 0;
   const errors: string[] = [];

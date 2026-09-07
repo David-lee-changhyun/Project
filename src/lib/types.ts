@@ -7,9 +7,6 @@ export type MediaItem = {
   width: number | null;
   height: number | null;
   takenAt: number;
-  locationName: string | null;
-  latitude: number | null;
-  longitude: number | null;
   createdAt: number;
   ownerId: string;
   ownerName: string;
