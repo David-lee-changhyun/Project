@@ -99,6 +99,13 @@ async function uploadWithRetry(file: File, maxAttempts = 3) {
   throw lastError;
 }
 
+// 큰 파일(주로 동영상)은 여러 개를 동시에 올려도 모바일 업로드 대역폭을
+// 나눠 갖기만 할 뿐 실제로 더 빨라지진 않고, 오히려 배터리/네트워크
+// 사정으로 하나씩 끊길 위험만 커짐. 작은 사진들은 지금처럼 여러 개를
+// 동시에 보내되(요청 왕복 오버헤드를 겹쳐서 줄이는 효과가 있음),
+// 큰 파일은 한 번에 하나씩만 보내도록 큐를 나눔
+const LARGE_FILE_BYTES = 20 * 1024 * 1024;
+
 // 동시 업로드 개수를 제한해서 여러 장을 안정적으로 업로드
 export async function uploadFiles(
   files: File[],
@@ -106,24 +113,30 @@ export async function uploadFiles(
   concurrency = 4
 ) {
   let done = 0;
+  const total = files.length;
   const errors: string[] = [];
-  const queue = [...files];
 
-  async function worker() {
-    while (queue.length) {
-      const file = queue.shift();
-      if (!file) return;
-      try {
-        await uploadWithRetry(file);
-      } catch (e) {
-        errors.push(e instanceof Error ? e.message : String(e));
-      } finally {
-        done++;
-        onProgress(done, files.length);
+  async function runPool(queue: File[], poolConcurrency: number) {
+    async function worker() {
+      while (queue.length) {
+        const file = queue.shift();
+        if (!file) return;
+        try {
+          await uploadWithRetry(file);
+        } catch (e) {
+          errors.push(e instanceof Error ? e.message : String(e));
+        } finally {
+          done++;
+          onProgress(done, total);
+        }
       }
     }
+    await Promise.all(Array.from({ length: Math.min(poolConcurrency, queue.length) }, worker));
   }
 
-  await Promise.all(Array.from({ length: Math.min(concurrency, files.length) }, worker));
+  const small = files.filter((f) => f.size < LARGE_FILE_BYTES);
+  const large = files.filter((f) => f.size >= LARGE_FILE_BYTES);
+
+  await Promise.all([runPool(small, concurrency), runPool(large, 1)]);
   return { errors };
 }

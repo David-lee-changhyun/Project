@@ -28,7 +28,17 @@ function drawScaled(
 async function imageThumbnail(file: File): Promise<File | null> {
   const url = URL.createObjectURL(file);
   try {
-    const bitmap = await createImageBitmap(file).catch(async () => {
+    // resizeWidth를 주면 브라우저가 디코딩 단계에서 바로 축소해서 만들어줌.
+    // 옵션 없이 createImageBitmap(file)만 부르면 4000만 화소짜리 원본을
+    // 일단 통째로 픽셀로 풀어낸(수백MB 메모리 + 긴 시간) 다음에야 캔버스에서
+    // 축소하는 꼴이라, 업로드 시작 전에 매 사진마다 그 디코딩 시간이 그대로
+    // 딜레이로 잡혔음. 세로/가로 어느 쪽이 긴 변인지는 미리 알 수 없어서
+    // width만 맞추고, 정확한 "긴 변 기준 480px" 크기는 아래 drawScaled에서
+    // (이미 작아진 비트맵 기준이라 사실상 공짜로) 마무리함
+    const bitmap = await createImageBitmap(file, {
+      resizeWidth: MAX_DIMENSION,
+      resizeQuality: "medium",
+    }).catch(async () => {
       const img = new Image();
       img.src = url;
       await new Promise((resolve, reject) => {
