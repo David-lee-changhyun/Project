@@ -71,7 +71,7 @@ export default function CalendarView() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-4">
+    <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-4 py-4 md:py-8">
       {primary && (
         <div className="mb-7 overflow-hidden rounded-[20px] bg-gradient-to-br from-accent-pink to-[#ff6482] p-6 text-center text-white">
           <div className="mb-2 flex justify-center">

@@ -91,7 +91,7 @@ export default function AlbumsBrowser() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-4">
+    <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-4 py-4 md:py-8">
       <SectionList
         title="태그"
         items={tags}

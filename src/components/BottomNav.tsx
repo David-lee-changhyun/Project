@@ -14,7 +14,7 @@ export default function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="sticky bottom-0 z-20 hairline-t bg-surface-elevated backdrop-blur-xl safe-bottom">
+    <nav className="sticky bottom-0 z-20 hairline-t bg-surface-elevated backdrop-blur-xl safe-bottom md:hidden">
       <div className="mx-auto flex max-w-2xl">
         {tabs.map(({ href, label, Icon }) => {
           const active = pathname === href;

@@ -182,13 +182,13 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto pb-24">
+      <div className="flex-1 overflow-y-auto pb-24 md:pb-10">
         {groups.map((group) => (
           <div key={group.label}>
             <h2 className="px-4 pb-1.5 pt-3 text-[13px] font-semibold text-muted">
               {group.label}
             </h2>
-            <div className="grid grid-cols-3 gap-0.5 px-0.5">
+            <div className="grid grid-cols-3 gap-0.5 px-0.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8">
               {group.items.map((item) => {
                 const globalIndex = items.indexOf(item);
                 return (
@@ -227,7 +227,7 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
       </div>
 
       {selectMode && selected.size > 0 && (
-        <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-20 flex justify-center px-4">
+        <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-20 flex justify-center px-4 md:bottom-6">
           <div className="flex items-center gap-1 rounded-full bg-surface-elevated px-2 py-1.5 shadow-[0_4px_20px_rgba(0,0,0,0.15)] ring-1 ring-border backdrop-blur-xl">
             <button
               onClick={handleBulkDownload}
@@ -257,7 +257,7 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
       />
       <button
         onClick={() => fileInputRef.current?.click()}
-        className="tap-scale fixed bottom-20 right-4 z-20 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-white shadow-[0_4px_16px_rgba(0,122,255,0.4)] safe-bottom"
+        className="tap-scale fixed bottom-20 right-4 z-20 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-white shadow-[0_4px_16px_rgba(0,122,255,0.4)] safe-bottom md:bottom-6 md:right-6"
         aria-label="사진/동영상 업로드"
       >
         <Plus className="h-6 w-6" strokeWidth={2.4} />
