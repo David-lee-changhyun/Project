@@ -78,11 +78,16 @@ body {
   display: none;
 }
 
-.safe-top {
-  padding-top: env(safe-area-inset-top);
-}
-.safe-bottom {
-  padding-bottom: env(safe-area-inset-bottom);
+/* @layer에 넣어서 Tailwind 유틸리티(py-*, pt-* 등)와 같은 우선순위로 경쟁하게 함 —
+   그냥 전역 CSS로 두면 Tailwind의 레이어드 유틸리티를 항상 이겨버려서(순서 무관),
+   같은 요소에 pt-4 같은 걸 같이 쓰면 조용히 덮어써 버리는 문제가 있었음 */
+@layer utilities {
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }
 
 /* iOS 스타일 얇은 구분선 (1px, 반투명) */
