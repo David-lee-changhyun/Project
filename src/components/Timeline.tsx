@@ -106,6 +106,21 @@ export default function Timeline({ filterAlbum, filterLocation, filterLiked }: P
     });
   }
 
+  function toggleSelectAll() {
+    setSelected((prev) => (prev.size === items.length ? new Set() : new Set(items.map((i) => i.id))));
+  }
+
+  function toggleSelectGroup(groupItems: MediaItem[]) {
+    setSelected((prev) => {
+      const ids = groupItems.map((i) => i.id);
+      const allSelected = ids.every((id) => prev.has(id));
+      const next = new Set(prev);
+      if (allSelected) ids.forEach((id) => next.delete(id));
+      else ids.forEach((id) => next.add(id));
+      return next;
+    });
+  }
+
   function onThumbClick(index: number) {
     const item = items[index];
     if (selectMode) {
@@ -216,7 +231,15 @@ export default function Timeline({ filterAlbum, filterLocation, filterLiked }: P
         </button>
 
         {selectMode ? (
-          <span className="text-[13px] text-muted">{selected.size}개 선택됨</span>
+          <div className="flex items-center gap-3">
+            <span className="text-[13px] text-muted">{selected.size}개 선택됨</span>
+            <button
+              onClick={toggleSelectAll}
+              className="tap-scale text-[15px] font-medium text-accent"
+            >
+              {selected.size === items.length && items.length > 0 ? "전체 해제" : "전체 선택"}
+            </button>
+          </div>
         ) : (
           users.length >= 1 && (
             <div className="glass flex gap-0.5 rounded-full p-0.5">
@@ -261,11 +284,22 @@ export default function Timeline({ filterAlbum, filterLocation, filterLiked }: P
       )}
 
       <div className="flex-1 overflow-y-auto pb-24 md:pb-10">
-        {groups.map((group) => (
+        {groups.map((group) => {
+          const groupIds = group.items.map((i) => i.id);
+          const groupAllSelected = groupIds.every((id) => selected.has(id));
+          return (
           <div key={group.label}>
-            <h2 className="px-4 pb-1.5 pt-3 text-[13px] font-semibold text-muted">
-              {group.label}
-            </h2>
+            <div className="flex items-center justify-between px-4 pb-1.5 pt-3">
+              <h2 className="text-[13px] font-semibold text-muted">{group.label}</h2>
+              {selectMode && (
+                <button
+                  onClick={() => toggleSelectGroup(group.items)}
+                  className="tap-scale text-[12px] font-medium text-accent"
+                >
+                  {groupAllSelected ? "선택 해제" : "전체 선택"}
+                </button>
+              )}
+            </div>
             <div className={`grid gap-0.5 px-0.5 ${gridColsByMode[viewMode]}`}>
               {group.items.map((item) => {
                 const globalIndex = items.indexOf(item);
@@ -283,7 +317,8 @@ export default function Timeline({ filterAlbum, filterLocation, filterLiked }: P
               })}
             </div>
           </div>
-        ))}
+          );
+        })}
 
         {!loading && items.length === 0 && (
           <div className="flex flex-col items-center gap-3 px-6 py-24 text-center text-muted">
