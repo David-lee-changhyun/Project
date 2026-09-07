@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useCallback } from "react";
-import { X, Download, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, Download, Trash2, ChevronLeft, ChevronRight, Heart } from "lucide-react";
 import type { MediaItem } from "@/lib/types";
 
 const iconBtn = "glass-dark tap-scale flex h-9 w-9 items-center justify-center rounded-full text-white";
@@ -12,12 +12,14 @@ export default function Lightbox({
   onClose,
   onIndexChange,
   onDelete,
+  onToggleLike,
 }: {
   items: MediaItem[];
   index: number;
   onClose: () => void;
   onIndexChange: (i: number) => void;
   onDelete: (id: string) => void;
+  onToggleLike: (id: string) => void;
 }) {
   const item = items[index];
 
@@ -42,6 +44,7 @@ export default function Lightbox({
 
   if (!item) return null;
   const src = `/api/media/${item.id}/file`;
+  const liked = !!item.likedAt;
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black safe-top safe-bottom">
@@ -57,6 +60,17 @@ export default function Lightbox({
           </div>
         </div>
         <div className="flex gap-2.5">
+          <button
+            onClick={() => onToggleLike(item.id)}
+            className={iconBtn}
+            aria-label={liked ? "좋아요 취소" : "좋아요"}
+          >
+            <Heart
+              className={`h-[18px] w-[18px] ${liked ? "text-accent-pink" : ""}`}
+              fill={liked ? "currentColor" : "none"}
+              strokeWidth={2}
+            />
+          </button>
           <a href={`${src}?download=1`} className={iconBtn} aria-label="다운로드">
             <Download className="h-[18px] w-[18px]" strokeWidth={2} />
           </a>
@@ -90,19 +104,6 @@ export default function Lightbox({
           </button>
         )}
       </div>
-
-      {item.tags.length > 0 && (
-        <div className="flex flex-wrap gap-2 px-4 pb-4">
-          {item.tags.map((t) => (
-            <span
-              key={t}
-              className="rounded-full bg-white/12 px-3 py-1 text-[12px] text-white/90"
-            >
-              #{t}
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

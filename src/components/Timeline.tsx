@@ -3,27 +3,39 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { format, isToday, isYesterday } from "date-fns";
 import { ko } from "date-fns/locale";
-import { Plus, Download, Trash2, Image as ImageIcon } from "lucide-react";
+import { Plus, Download, Trash2, Image as ImageIcon, FolderPlus } from "lucide-react";
 import type { MediaItem } from "@/lib/types";
 import MediaThumb from "@/components/MediaThumb";
 import Lightbox from "@/components/Lightbox";
+import AlbumPickerSheet from "@/components/AlbumPickerSheet";
 import { uploadFiles } from "@/lib/uploadMedia";
 
-function groupLabel(ts: number) {
+type ViewMode = "day" | "month" | "year";
+
+function groupLabel(ts: number, mode: ViewMode) {
   const d = new Date(ts);
+  if (mode === "year") return format(d, "yyyy년", { locale: ko });
+  if (mode === "month") return format(d, "yyyy년 M월", { locale: ko });
   if (isToday(d)) return "오늘";
   if (isYesterday(d)) return "어제";
   return format(d, "yyyy년 M월 d일 (EEE)", { locale: ko });
 }
 
+const gridColsByMode: Record<ViewMode, string> = {
+  day: "grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8",
+  month: "grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10",
+  year: "grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12",
+};
+
 type Props = {
-  filterTag?: string;
+  filterAlbum?: string;
   filterLocation?: string;
+  filterLiked?: boolean;
 };
 
 type UserOption = { id: string; displayName: string };
 
-export default function Timeline({ filterTag, filterLocation }: Props) {
+export default function Timeline({ filterAlbum, filterLocation, filterLiked }: Props) {
   const [items, setItems] = useState<MediaItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,14 +43,14 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [pendingFiles, setPendingFiles] = useState<File[] | null>(null);
-  const [tagInput, setTagInput] = useState("");
-  const [locationInput, setLocationInput] = useState("");
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(
     null
   );
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [users, setUsers] = useState<UserOption[]>([]);
   const [uploaderFilter, setUploaderFilter] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("day");
+  const [showAlbumPicker, setShowAlbumPicker] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -54,12 +66,13 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
     (after?: string | null) => {
       const params = new URLSearchParams();
       if (after) params.set("cursor", after);
-      if (filterTag) params.set("tag", filterTag);
+      if (filterAlbum) params.set("album", filterAlbum);
       if (filterLocation) params.set("location", filterLocation);
+      if (filterLiked) params.set("liked", "1");
       if (uploaderFilter) params.set("uploader", uploaderFilter);
       return `/api/media?${params.toString()}`;
     },
-    [filterTag, filterLocation, uploaderFilter]
+    [filterAlbum, filterLocation, filterLiked, uploaderFilter]
   );
 
   const load = useCallback(
@@ -139,6 +152,12 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
     URL.revokeObjectURL(url);
   }
 
+  function handleAlbumPickerDone() {
+    setShowAlbumPicker(false);
+    setSelected(new Set());
+    setSelectMode(false);
+  }
+
   async function handleSingleDelete(id: string) {
     await fetch("/api/media", {
       method: "DELETE",
@@ -149,6 +168,12 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
     setLightboxIndex(null);
   }
 
+  async function handleToggleLike(id: string) {
+    const res = await fetch(`/api/media/${id}/like`, { method: "POST" });
+    const data = (await res.json()) as { likedAt: number | null };
+    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, likedAt: data.likedAt } : i)));
+  }
+
   function onFilesChosen(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files ? Array.from(e.target.files) : [];
     if (files.length) setPendingFiles(files);
@@ -157,20 +182,12 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
 
   async function startUpload() {
     if (!pendingFiles?.length) return;
-    const tags = tagInput
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean);
     setUploadProgress({ done: 0, total: pendingFiles.length });
-    const { errors } = await uploadFiles(
-      pendingFiles,
-      { tags, locationName: locationInput.trim() || undefined },
-      (done, total) => setUploadProgress({ done, total })
+    const { errors } = await uploadFiles(pendingFiles, (done, total) =>
+      setUploadProgress({ done, total })
     );
     setUploadProgress(null);
     setPendingFiles(null);
-    setTagInput("");
-    setLocationInput("");
     if (errors.length) alert(`일부 업로드 실패:\n${errors.join("\n")}`);
     setItems([]);
     setCursor(null);
@@ -179,7 +196,7 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
 
   const groups: { label: string; items: MediaItem[] }[] = [];
   for (const item of items) {
-    const label = groupLabel(item.takenAt);
+    const label = groupLabel(item.takenAt, viewMode);
     const last = groups[groups.length - 1];
     if (last && last.label === label) last.items.push(item);
     else groups.push({ label, items: [item] });
@@ -201,7 +218,7 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
         {selectMode ? (
           <span className="text-[13px] text-muted">{selected.size}개 선택됨</span>
         ) : (
-          users.length > 1 && (
+          users.length >= 1 && (
             <div className="glass flex gap-0.5 rounded-full p-0.5">
               {uploaderSegments.map((seg) => (
                 <button
@@ -219,13 +236,37 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
         )}
       </div>
 
+      {!selectMode && (
+        <div className="flex justify-end px-4 pb-2">
+          <div className="glass flex gap-0.5 rounded-full p-0.5">
+            {(
+              [
+                ["day", "일"],
+                ["month", "월"],
+                ["year", "년"],
+              ] as [ViewMode, string][]
+            ).map(([mode, label]) => (
+              <button
+                key={mode}
+                onClick={() => setViewMode(mode)}
+                className={`tap-scale rounded-full px-3 py-1 text-[13px] font-medium ${
+                  viewMode === mode ? "bg-accent text-white" : "text-muted"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto pb-24 md:pb-10">
         {groups.map((group) => (
           <div key={group.label}>
             <h2 className="px-4 pb-1.5 pt-3 text-[13px] font-semibold text-muted">
               {group.label}
             </h2>
-            <div className="grid grid-cols-3 gap-0.5 px-0.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8">
+            <div className={`grid gap-0.5 px-0.5 ${gridColsByMode[viewMode]}`}>
               {group.items.map((item) => {
                 const globalIndex = items.indexOf(item);
                 return (
@@ -269,6 +310,13 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
         <div className="fixed inset-x-0 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-20 flex justify-center px-4 md:bottom-6">
           <div className="glass flex items-center gap-1 rounded-full px-2 py-1.5">
             <button
+              onClick={() => setShowAlbumPicker(true)}
+              className="tap-scale flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[14px] font-medium text-accent"
+            >
+              <FolderPlus className="h-[17px] w-[17px]" strokeWidth={2} />
+              앨범
+            </button>
+            <button
               onClick={handleBulkDownload}
               className="tap-scale flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[14px] font-medium text-accent"
             >
@@ -294,53 +342,42 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
         className="hidden"
         onChange={onFilesChosen}
       />
-      <button
-        onClick={() => fileInputRef.current?.click()}
-        className="tap-scale fixed bottom-24 right-4 z-20 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_4px_16px_rgba(0,122,255,0.45)] ring-1 ring-white/20 safe-bottom md:bottom-6 md:right-6"
-        aria-label="사진/동영상 업로드"
-      >
-        <Plus className="h-6 w-6" strokeWidth={2.4} />
-      </button>
+      {!selectMode && (
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          className="tap-scale fixed bottom-24 right-4 z-20 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_4px_16px_rgba(0,122,255,0.45)] ring-1 ring-white/20 safe-bottom md:bottom-6 md:right-6"
+          aria-label="사진/동영상 업로드"
+        >
+          <Plus className="h-6 w-6" strokeWidth={2.4} />
+        </button>
+      )}
 
       {pendingFiles && (
         <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center">
           <div className="w-full max-w-sm rounded-t-[28px] bg-surface p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:rounded-[28px] sm:pb-5">
             <div className="sheet-handle sm:hidden" />
-            <h3 className="mb-4 text-[17px] font-semibold">
-              {pendingFiles.length}개 업로드
-            </h3>
             {uploadProgress ? (
-              <div className="mb-2">
-                <div className="mb-1.5 h-1.5 w-full overflow-hidden rounded-full bg-border">
-                  <div
-                    className="h-full bg-accent transition-all"
-                    style={{
-                      width: `${(uploadProgress.done / uploadProgress.total) * 100}%`,
-                    }}
-                  />
-                </div>
-                <p className="text-[13px] text-muted">
-                  {uploadProgress.done} / {uploadProgress.total}
-                </p>
-              </div>
-            ) : (
               <>
-                <div className="mb-5 overflow-hidden rounded-[14px]">
-                  <input
-                    className="w-full bg-background px-4 py-3 text-[15px] outline-none"
-                    placeholder="태그 (쉼표로 구분, 예: 여행,제주도)"
-                    value={tagInput}
-                    onChange={(e) => setTagInput(e.target.value)}
-                  />
-                  <div className="hairline-t">
-                    <input
-                      className="w-full bg-background px-4 py-3 text-[15px] outline-none"
-                      placeholder="장소 (예: 제주도)"
-                      value={locationInput}
-                      onChange={(e) => setLocationInput(e.target.value)}
+                <h3 className="mb-4 text-[17px] font-semibold">업로드 중...</h3>
+                <div className="mb-2">
+                  <div className="mb-1.5 h-1.5 w-full overflow-hidden rounded-full bg-border">
+                    <div
+                      className="h-full bg-accent transition-all"
+                      style={{
+                        width: `${(uploadProgress.done / uploadProgress.total) * 100}%`,
+                      }}
                     />
                   </div>
+                  <p className="text-[13px] text-muted">
+                    {uploadProgress.done} / {uploadProgress.total}
+                  </p>
                 </div>
+              </>
+            ) : (
+              <>
+                <h3 className="mb-5 text-[17px] font-semibold">
+                  {pendingFiles.length}개 항목을 업로드할까요?
+                </h3>
                 <div className="flex gap-3">
                   <button
                     onClick={() => setPendingFiles(null)}
@@ -361,6 +398,14 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
         </div>
       )}
 
+      {showAlbumPicker && (
+        <AlbumPickerSheet
+          mediaIds={Array.from(selected)}
+          onClose={() => setShowAlbumPicker(false)}
+          onDone={handleAlbumPickerDone}
+        />
+      )}
+
       {lightboxIndex !== null && (
         <Lightbox
           items={items}
@@ -368,6 +413,7 @@ export default function Timeline({ filterTag, filterLocation }: Props) {
           onClose={() => setLightboxIndex(null)}
           onIndexChange={setLightboxIndex}
           onDelete={handleSingleDelete}
+          onToggleLike={handleToggleLike}
         />
       )}
     </div>

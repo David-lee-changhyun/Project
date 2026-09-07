@@ -1,6 +1,6 @@
 "use client";
 
-import { Play, Check } from "lucide-react";
+import { Play, Check, Heart } from "lucide-react";
 import type { MediaItem } from "@/lib/types";
 
 export default function MediaThumb({
@@ -36,6 +36,12 @@ export default function MediaThumb({
       {item.type === "video" && (
         <span className="absolute bottom-1.5 right-1.5 flex items-center gap-0.5 rounded-full bg-black/45 px-1.5 py-0.5 text-white backdrop-blur-sm">
           <Play className="h-3 w-3" fill="white" strokeWidth={0} />
+        </span>
+      )}
+
+      {item.likedAt && (
+        <span className="absolute left-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/40 backdrop-blur-sm">
+          <Heart className="h-3 w-3 text-accent-pink" fill="currentColor" strokeWidth={0} />
         </span>
       )}
 

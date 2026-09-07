@@ -13,7 +13,7 @@ export type MediaItem = {
   createdAt: number;
   ownerId: string;
   ownerName: string;
-  tags: string[];
+  likedAt: number | null;
 };
 
 export type CalendarEvent = {
@@ -24,4 +24,12 @@ export type CalendarEvent = {
   repeatYearly: number;
   memo: string | null;
   createdAt: number;
+};
+
+export type Album = {
+  id: string;
+  name: string;
+  createdAt: number;
+  count: number;
+  coverId: string | null;
 };

@@ -1,10 +1,5 @@
 import * as exifr from "exifr";
 
-export type UploadOptions = {
-  tags?: string[];
-  locationName?: string;
-};
-
 function isHeic(file: File): boolean {
   const type = file.type.toLowerCase();
   if (type === "image/heic" || type === "image/heif") return true;
@@ -54,7 +49,7 @@ async function extractGps(file: File): Promise<{ lat: number; lng: number } | nu
   return null;
 }
 
-export async function uploadOneFile(file: File, opts: UploadOptions = {}) {
+export async function uploadOneFile(file: File) {
   // EXIF는 변환 전 원본에서 먼저 추출 (변환 과정에서 메타데이터가 사라짐)
   const [takenAt, gps] = await Promise.all([extractTakenAt(file), extractGps(file)]);
   const uploadFile = isHeic(file) ? await convertHeicToJpeg(file) : file;
@@ -66,8 +61,6 @@ export async function uploadOneFile(file: File, opts: UploadOptions = {}) {
     form.set("latitude", String(gps.lat));
     form.set("longitude", String(gps.lng));
   }
-  if (opts.locationName) form.set("locationName", opts.locationName);
-  if (opts.tags?.length) form.set("tags", opts.tags.join(","));
 
   const res = await fetch("/api/media", { method: "POST", body: form });
   if (!res.ok) {
@@ -80,7 +73,6 @@ export async function uploadOneFile(file: File, opts: UploadOptions = {}) {
 // 동시 업로드 개수를 제한해서 여러 장을 안정적으로 업로드
 export async function uploadFiles(
   files: File[],
-  opts: UploadOptions,
   onProgress: (done: number, total: number) => void,
   concurrency = 3
 ) {
@@ -93,7 +85,7 @@ export async function uploadFiles(
       const file = queue.shift();
       if (!file) return;
       try {
-        await uploadOneFile(file, opts);
+        await uploadOneFile(file);
       } catch (e) {
         errors.push(e instanceof Error ? e.message : String(e));
       } finally {

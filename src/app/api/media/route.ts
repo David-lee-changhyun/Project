@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb, getBucket } from "@/lib/cloudflare";
 import { requireUser, AuthError } from "@/lib/auth";
 import { newId } from "@/lib/ids";
-import { attachTags, buildR2Key, detectType } from "@/lib/media";
+import { buildR2Key, detectType } from "@/lib/media";
+import { reverseGeocode } from "@/lib/geocode";
 
 const MAX_UPLOAD_BYTES = 200 * 1024 * 1024; // Workers 요청 바디 제한(무료 100MB) 고려, 여유 있게 안내용 상한
 
@@ -33,10 +34,14 @@ export async function POST(req: NextRequest) {
   const takenAt = takenAtRaw ? Number(takenAtRaw) : Date.now();
   const widthRaw = form.get("width");
   const heightRaw = form.get("height");
-  const locationName = form.get("locationName");
   const latitudeRaw = form.get("latitude");
   const longitudeRaw = form.get("longitude");
-  const tagsRaw = form.get("tags"); // comma-separated
+  const latitude = latitudeRaw ? Number(latitudeRaw) : null;
+  const longitude = longitudeRaw ? Number(longitudeRaw) : null;
+
+  // 사진 GPS 정보가 있으면 장소명을 자동으로 채움 (수동 입력 없음)
+  const locationName =
+    latitude !== null && longitude !== null ? await reverseGeocode(latitude, longitude) : null;
 
   const mediaId = newId("media");
   const r2Key = buildR2Key(user.id, mediaId, file.name || "upload");
@@ -65,37 +70,32 @@ export async function POST(req: NextRequest) {
       widthRaw ? Number(widthRaw) : null,
       heightRaw ? Number(heightRaw) : null,
       Number.isFinite(takenAt) ? takenAt : now,
-      typeof locationName === "string" && locationName ? locationName : null,
-      latitudeRaw ? Number(latitudeRaw) : null,
-      longitudeRaw ? Number(longitudeRaw) : null,
+      locationName,
+      latitude,
+      longitude,
       now
     )
     .run();
-
-  if (typeof tagsRaw === "string" && tagsRaw.trim()) {
-    await attachTags(db, mediaId, tagsRaw.split(","));
-  }
 
   return NextResponse.json({ id: mediaId, takenAt: Number.isFinite(takenAt) ? takenAt : now });
 }
 
 export async function GET(req: NextRequest) {
-  let user;
   try {
-    user = await requireUser();
+    await requireUser();
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: 401 });
     throw e;
   }
-  void user; // 두 사람 모두 모든 미디어를 공유해서 볼 수 있음 (공유 앨범)
 
   const { searchParams } = new URL(req.url);
   const limit = Math.min(Number(searchParams.get("limit") ?? 60) || 60, 100);
   const cursor = searchParams.get("cursor"); // taken_at 기준 cursor (ms)
-  const tag = searchParams.get("tag");
   const location = searchParams.get("location");
   const type = searchParams.get("type");
   const uploader = searchParams.get("uploader"); // owner_id로 업로더 필터 (전체/나/상대방)
+  const albumId = searchParams.get("album");
+  const liked = searchParams.get("liked");
 
   const db = await getDb();
 
@@ -118,11 +118,12 @@ export async function GET(req: NextRequest) {
     conditions.push("m.owner_id = ?");
     params.push(uploader);
   }
-  if (tag) {
-    conditions.push(
-      "m.id IN (SELECT mt.media_id FROM media_tags mt JOIN tags t ON t.id = mt.tag_id WHERE t.name = ?)"
-    );
-    params.push(tag);
+  if (albumId) {
+    conditions.push("m.id IN (SELECT media_id FROM album_media WHERE album_id = ?)");
+    params.push(albumId);
+  }
+  if (liked === "1") {
+    conditions.push("m.liked_at IS NOT NULL");
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -132,7 +133,8 @@ export async function GET(req: NextRequest) {
       `SELECT m.id as id, m.type as type, m.content_type as contentType, m.file_name as fileName,
               m.size_bytes as sizeBytes, m.width as width, m.height as height, m.taken_at as takenAt,
               m.location_name as locationName, m.latitude as latitude, m.longitude as longitude,
-              m.created_at as createdAt, m.owner_id as ownerId, u.display_name as ownerName
+              m.created_at as createdAt, m.owner_id as ownerId, u.display_name as ownerName,
+              m.liked_at as likedAt
        FROM media m
        JOIN users u ON u.id = m.owner_id
        ${where}
@@ -145,26 +147,6 @@ export async function GET(req: NextRequest) {
   const results = rows.results ?? [];
   const hasMore = results.length > limit;
   const page = hasMore ? results.slice(0, limit) : results;
-
-  const ids = page.map((r) => r.id as string);
-  let tagsByMedia = new Map<string, string[]>();
-  if (ids.length) {
-    const placeholders = ids.map(() => "?").join(",");
-    const tagRows = await db
-      .prepare(
-        `SELECT mt.media_id as mediaId, t.name as name
-         FROM media_tags mt JOIN tags t ON t.id = mt.tag_id
-         WHERE mt.media_id IN (${placeholders})`
-      )
-      .bind(...ids)
-      .all<{ mediaId: string; name: string }>();
-    tagsByMedia = new Map();
-    for (const row of tagRows.results ?? []) {
-      const list = tagsByMedia.get(row.mediaId) ?? [];
-      list.push(row.name);
-      tagsByMedia.set(row.mediaId, list);
-    }
-  }
 
   const items = page.map((r) => ({
     id: r.id,
@@ -181,7 +163,7 @@ export async function GET(req: NextRequest) {
     createdAt: r.createdAt,
     ownerId: r.ownerId,
     ownerName: r.ownerName,
-    tags: tagsByMedia.get(r.id as string) ?? [],
+    likedAt: r.likedAt,
   }));
 
   const nextCursor = hasMore ? String(page[page.length - 1].takenAt) : null;
@@ -190,14 +172,12 @@ export async function GET(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  let user;
   try {
-    user = await requireUser();
+    await requireUser();
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: 401 });
     throw e;
   }
-  void user;
 
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   const ids: string[] = Array.isArray(body?.ids) ? body.ids.filter((x: unknown) => typeof x === "string") : [];
