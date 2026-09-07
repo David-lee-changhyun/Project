@@ -1,0 +1,29 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "shared-album",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2024-12-30",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "observability": {
+    "enabled": true
+  },
+  // 무료 티어 D1: 두 사람 계정/사진 메타데이터 저장
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "shared-album-db",
+      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+    }
+  ],
+  // 무료 티어 R2: 사진/동영상 원본 저장 (10GB 무료, 이후 매우 저렴)
+  "r2_buckets": [
+    {
+      "binding": "MEDIA_BUCKET",
+      "bucket_name": "shared-album-media"
+    }
+  ]
+}
