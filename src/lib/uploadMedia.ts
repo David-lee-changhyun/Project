@@ -1,4 +1,3 @@
-import * as exifr from "exifr";
 import { makeThumbnail } from "@/lib/thumbnail";
 
 function isHeic(file: File): boolean {
@@ -25,6 +24,8 @@ async function convertHeicToJpeg(file: File): Promise<File> {
 async function extractTakenAt(file: File): Promise<number> {
   if (file.type.startsWith("image/") || isHeic(file)) {
     try {
+      // exifr는 업로드할 때만 필요해서 초기 번들에서 빼고 지연 로드
+      const exifr = await import("exifr");
       const exif = await exifr.parse(file, ["DateTimeOriginal", "CreateDate"]);
       const date = exif?.DateTimeOriginal ?? exif?.CreateDate;
       if (date instanceof Date && !Number.isNaN(date.getTime())) {

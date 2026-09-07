@@ -206,6 +206,7 @@ export default function Timeline({ filterAlbum, filterLiked }: Props) {
 
   async function startUpload() {
     if (!pendingFiles?.length) return;
+    const wasEmpty = items.length === 0;
     setUploadProgress({ done: 0, total: pendingFiles.length });
     const { errors } = await uploadFiles(pendingFiles, (done, total) =>
       setUploadProgress({ done, total })
@@ -213,12 +214,27 @@ export default function Timeline({ filterAlbum, filterLiked }: Props) {
     setUploadProgress(null);
     setPendingFiles(null);
     if (errors.length) alert(`일부 업로드 실패:\n${errors.join("\n")}`);
-    setItems([]);
-    setCursor(null);
-    load(null);
+
+    // 방금 올린 사진들만 최신 목록(1페이지)에서 가져와 앞에 끼워 넣음.
+    // 예전엔 목록 전체를 비우고 처음부터 다시 불러왔는데, 그러면 이미
+    // "더 보기"로 로드해둔 페이지까지 통째로 버려지고 다시 받아와야 해서
+    // 사진이 많을수록(수천~수만 장) 느려지는 문제가 있었음
+    const res = await fetch(query(null));
+    const data = (await res.json()) as { items: MediaItem[]; nextCursor: string | null };
+    setItems((prev) => {
+      if (prev.length === 0) return data.items;
+      const existingIds = new Set(prev.map((i) => i.id));
+      const freshItems = data.items.filter((i) => !existingIds.has(i.id));
+      return freshItems.length ? [...freshItems, ...prev] : prev;
+    });
+    if (wasEmpty) setCursor(data.nextCursor);
   }
 
   const groups: { label: string; items: MediaItem[] }[] = [];
+  // item.id -> 전체 목록에서의 인덱스. 그리드에서 매번 items.indexOf()로 찾으면
+  // 항목이 많아질수록(O(n^2)) 느려지므로 한 번 순회하며 미리 만들어둠
+  const indexById = new Map<string, number>();
+  items.forEach((item, i) => indexById.set(item.id, i));
   for (const item of items) {
     const label = groupLabel(item.takenAt, viewMode);
     const last = groups[groups.length - 1];
@@ -311,7 +327,7 @@ export default function Timeline({ filterAlbum, filterLiked }: Props) {
             </div>
             <div className={`grid gap-0.5 px-0.5 ${gridColsByMode[viewMode]}`}>
               {group.items.map((item) => {
-                const globalIndex = items.indexOf(item);
+                const globalIndex = indexById.get(item.id) ?? -1;
                 return (
                   <MediaThumb
                     key={item.id}

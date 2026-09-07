@@ -1,29 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { getDb, getBucket } from "@/lib/cloudflare";
-import { requireUser, AuthError } from "@/lib/auth";
+import { SESSION_COOKIE } from "@/lib/auth";
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    await requireUser();
-  } catch (e) {
-    if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: 401 });
-    throw e;
+  const store = await cookies();
+  const sessionId = store.get(SESSION_COOKIE)?.value;
+  if (!sessionId) {
+    return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
 
   const { id } = await params;
   const db = await getDb();
-  const media = await db
-    .prepare(
-      `SELECT r2_key as r2Key, content_type as contentType, file_name as fileName,
-              thumbnail_r2_key as thumbnailR2Key
-       FROM media WHERE id = ?`
-    )
-    .bind(id)
-    .first<{ r2Key: string; contentType: string; fileName: string; thumbnailR2Key: string | null }>();
 
+  // 그리드 하나에 썸네일 수십 개가 동시에 요청되는 가장 뜨거운 경로라
+  // 세션 확인 + 미디어 조회를 순차 왕복 2번이 아니라 batch()로 한 번에 묶어서 보냄
+  const [sessionResult, mediaResult] = await db.batch<Record<string, unknown>>([
+    db.prepare(`SELECT expires_at as expiresAt FROM sessions WHERE id = ?`).bind(sessionId),
+    db
+      .prepare(
+        `SELECT r2_key as r2Key, content_type as contentType, file_name as fileName,
+                thumbnail_r2_key as thumbnailR2Key
+         FROM media WHERE id = ?`
+      )
+      .bind(id),
+  ]);
+
+  const session = sessionResult.results?.[0] as { expiresAt: number } | undefined;
+  if (!session || session.expiresAt < Date.now()) {
+    return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+  }
+
+  const media = mediaResult.results?.[0] as
+    | { r2Key: string; contentType: string; fileName: string; thumbnailR2Key: string | null }
+    | undefined;
   if (!media) {
     return NextResponse.json({ error: "찾을 수 없습니다." }, { status: 404 });
   }
