@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb, getBucket } from "@/lib/cloudflare";
+import { getDb, getBucket, getExecutionContext } from "@/lib/cloudflare";
 import { requireUser, AuthError } from "@/lib/auth";
 import { newId } from "@/lib/ids";
 import { buildR2Key, detectType } from "@/lib/media";
@@ -39,31 +39,28 @@ export async function POST(req: NextRequest) {
   const latitude = latitudeRaw ? Number(latitudeRaw) : null;
   const longitude = longitudeRaw ? Number(longitudeRaw) : null;
 
-  // 사진 GPS 정보가 있으면 장소명을 자동으로 채움 (수동 입력 없음)
-  // 지명 변환(외부 API)이 실패해도 좌표는 있으니 장소 정보 자체가 사라지지 않도록 좌표로 대체
-  let locationName: string | null = null;
-  if (latitude !== null && longitude !== null) {
-    locationName = await reverseGeocode(latitude, longitude);
-    if (!locationName) locationName = `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`;
-  }
+  // 지명 변환(외부 API 호출)은 느릴 수 있어 업로드 응답을 막지 않도록 나중에 백그라운드로 처리.
+  // 우선 좌표 문자열로 채워둬서 장소 정보 자체는 바로 보이게 함
+  const locationName =
+    latitude !== null && longitude !== null ? `${latitude.toFixed(3)}, ${longitude.toFixed(3)}` : null;
 
   const mediaId = newId("media");
   const r2Key = buildR2Key(user.id, mediaId, file.name || "upload");
 
-  const bucket = await getBucket();
-  await bucket.put(r2Key, await file.arrayBuffer(), {
-    httpMetadata: { contentType: file.type },
-  });
-
   // 그리드에서 빠르게 로드할 작은 미리보기 (클라이언트가 만들어 보낸 경우만)
   const thumbnail = form.get("thumbnail");
-  let thumbnailR2Key: string | null = null;
-  if (thumbnail instanceof File) {
-    thumbnailR2Key = buildR2Key(user.id, mediaId, `thumb_${file.name || "upload"}.jpg`);
-    await bucket.put(thumbnailR2Key, await thumbnail.arrayBuffer(), {
-      httpMetadata: { contentType: "image/jpeg" },
-    });
-  }
+  const thumbnailR2Key =
+    thumbnail instanceof File ? buildR2Key(user.id, mediaId, `thumb_${file.name || "upload"}.jpg`) : null;
+
+  const bucket = await getBucket();
+  await Promise.all([
+    bucket.put(r2Key, await file.arrayBuffer(), { httpMetadata: { contentType: file.type } }),
+    thumbnail instanceof File && thumbnailR2Key
+      ? bucket.put(thumbnailR2Key, await thumbnail.arrayBuffer(), {
+          httpMetadata: { contentType: "image/jpeg" },
+        })
+      : Promise.resolve(),
+  ]);
 
   const db = await getDb();
   const now = Date.now();
@@ -91,6 +88,16 @@ export async function POST(req: NextRequest) {
       now
     )
     .run();
+
+  if (latitude !== null && longitude !== null) {
+    const ctx = await getExecutionContext();
+    ctx.waitUntil(
+      reverseGeocode(latitude, longitude).then((name) => {
+        if (!name) return; // 실패하면 좌표 문자열을 그대로 둠
+        return db.prepare("UPDATE media SET location_name = ? WHERE id = ?").bind(name, mediaId).run();
+      })
+    );
+  }
 
   return NextResponse.json({ id: mediaId, takenAt: Number.isFinite(takenAt) ? takenAt : now });
 }

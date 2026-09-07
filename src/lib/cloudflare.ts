@@ -5,6 +5,12 @@ export async function getEnv(): Promise<CloudflareEnv> {
   return env;
 }
 
+// 응답을 보낸 뒤에도 백그라운드 작업(예: 외부 API 호출)을 계속 실행하기 위한 Workers ExecutionContext
+export async function getExecutionContext() {
+  const { ctx } = await getCloudflareContext({ async: true });
+  return ctx;
+}
+
 export async function getDb() {
   const env = await getEnv();
   return env.DB;
