@@ -37,26 +37,65 @@ async function extractTakenAt(file: File): Promise<number> {
   return file.lastModified || Date.now();
 }
 
-export async function uploadOneFile(file: File) {
+class UploadError extends Error {
+  retryable: boolean;
+  constructor(message: string, retryable: boolean) {
+    super(message);
+    this.retryable = retryable;
+  }
+}
+
+// 변환/썸네일 생성처럼 무거운 작업은 파일당 한 번만 — 재시도 시 다시 안 돌리도록 분리
+async function prepareUpload(file: File): Promise<FormData> {
   const [takenAt, uploadFile] = await Promise.all([
     extractTakenAt(file),
     isHeic(file) ? convertHeicToJpeg(file) : Promise.resolve(file),
   ]);
   const type = uploadFile.type.startsWith("video/") ? "video" : "photo";
-  // 타임라인 그리드가 원본 대신 작은 썸네일만 받아오도록 미리 축소본 생성 (실패해도 업로드는 진행)
   const thumbnail = await makeThumbnail(uploadFile, type).catch(() => null);
 
   const form = new FormData();
   form.set("file", uploadFile);
   form.set("takenAt", String(takenAt));
   if (thumbnail) form.set("thumbnail", thumbnail);
+  return form;
+}
 
-  const res = await fetch("/api/media", { method: "POST", body: form });
+async function sendUpload(form: FormData, fileName: string) {
+  let res: Response;
+  try {
+    res = await fetch("/api/media", { method: "POST", body: form });
+  } catch {
+    // 네트워크 오류(연결 끊김, 백그라운드 전환 등) — 재시도 가치 있음
+    throw new UploadError(`네트워크 오류: ${fileName}`, true);
+  }
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(data.error ?? `업로드 실패: ${file.name}`);
+    // 4xx(파일 형식/용량 문제 등)는 다시 시도해도 똑같이 실패하므로 재시도 안 함
+    throw new UploadError(data.error ?? `업로드 실패: ${fileName}`, res.status >= 500);
   }
   return res.json();
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// 네트워크 문제로 실패하면 최대 2번 더 재시도 (파일당 최대 3번 시도)
+async function uploadWithRetry(file: File, maxAttempts = 3) {
+  const form = await prepareUpload(file);
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await sendUpload(form, file.name);
+    } catch (e) {
+      lastError = e;
+      const retryable = e instanceof UploadError ? e.retryable : true;
+      if (!retryable || attempt === maxAttempts) throw e;
+      await sleep(1000 * attempt);
+    }
+  }
+  throw lastError;
 }
 
 // 동시 업로드 개수를 제한해서 여러 장을 안정적으로 업로드
@@ -74,7 +113,7 @@ export async function uploadFiles(
       const file = queue.shift();
       if (!file) return;
       try {
-        await uploadOneFile(file);
+        await uploadWithRetry(file);
       } catch (e) {
         errors.push(e instanceof Error ? e.message : String(e));
       } finally {

@@ -61,6 +61,17 @@ export default function Timeline({ filterAlbum, filterLiked }: Props) {
       .then((d) => setUsers(d.users ?? []));
   }, []);
 
+  // 업로드 도중 탭을 닫거나 새로고침하려 하면 한 번 경고 (앱 전환 자체는 브라우저 API로 막을 수 없음)
+  useEffect(() => {
+    if (!uploadProgress) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [uploadProgress]);
+
   const query = useCallback(
     (after?: string | null) => {
       const params = new URLSearchParams();
@@ -405,6 +416,10 @@ export default function Timeline({ filterAlbum, filterLiked }: Props) {
                     {uploadProgress.done} / {uploadProgress.total}
                   </p>
                 </div>
+                <p className="rounded-[10px] bg-danger/10 px-3 py-2 text-[12px] text-danger">
+                  업로드가 끝날 때까지 이 화면을 벗어나지 마세요. 특히 아이폰은 다른 앱으로
+                  전환하면 업로드가 중간에 끊길 수 있어요.
+                </p>
               </>
             ) : (
               <>
