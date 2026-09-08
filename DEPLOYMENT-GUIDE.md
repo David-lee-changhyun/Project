@@ -74,20 +74,25 @@ npx wrangler secret put R2_SECRET_ACCESS_KEY
 npx wrangler d1 migrations apply shared-album-db --remote
 ```
 
-### 2. 시크릿 3개 등록
-이미 생성해둔 키를 그대로 씁니다(이 앱 전용이라 다시 만들 필요 없음):
+### 2. 키 쌍 생성 (개인키는 절대 git에 커밋하지 말 것)
+```powershell
+node -e "const{generateKeyPairSync}=require('crypto');const{publicKey,privateKey}=generateKeyPairSync('ec',{namedCurve:'prime256v1'});function b64url(b){return b.toString('base64').replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}const pj=publicKey.export({format:'jwk'});const pvj=privateKey.export({format:'jwk'});const x=Buffer.from(pj.x,'base64url');const y=Buffer.from(pj.y,'base64url');console.log('PUBLIC:',b64url(Buffer.concat([Buffer.from([4]),x,y])));console.log('PRIVATE:',pvj.d);"
+```
+터미널에 출력된 `PUBLIC:`/`PRIVATE:` 값은 **이 문서나 다른 어떤 파일에도 적어두지 말고** 아래 3번에서 바로 붙여넣기만 합니다(비밀값이라 git에 남으면 안 됨 — 만약 실수로 커밋했다면 새로 키를 만들어서 시크릿을 덮어쓰는 걸로 무효화하세요).
+
+### 3. 시크릿 3개 등록
 ```powershell
 npx wrangler secret put VAPID_PUBLIC_KEY
-# 값: BBfpyM2chTrpPJs7LiwrlIxFIBcL7DvYmhF1Y7DpWXohwDi9ZMSOjacYYU3x84EI_1tFfoPOW7u9jC-VBhDJ1zQ
+# 값: 방금 출력된 PUBLIC 값
 
 npx wrangler secret put VAPID_PRIVATE_KEY
-# 값: E8gllnuP7Qbkr4UFqDvzoUA_wM6y6709O_7Ky-e5-Co
+# 값: 방금 출력된 PRIVATE 값
 
 npx wrangler secret put VAPID_SUBJECT
-# 값: mailto:noreply@example.com  (푸시 서비스에 남는 연락처 형식 값, 원하면 본인 이메일로 바꿔도 됨)
+# 값: mailto:본인이메일  (푸시 서비스에 남는 연락처 형식 값)
 ```
 
-### 3. 설정 탭에서 알림 켜기
+### 4. 설정 탭에서 알림 켜기
 배포 후 앱 접속 → 하단(모바일) 또는 좌측(PC) 설정 아이콘 → "업로드 알림" 토글 켜기 → 브라우저가 알림 권한을 물어보면 허용. **두 사람 모두** 각자 기기에서 켜야 서로에게 알림이 갑니다.
 
 아이폰(사파리)은 홈 화면에 "추가"해서 설치한 상태(iOS 16.4 이상)에서만 알림을 받을 수 있습니다. 브라우저 탭 상태로는 알림이 오지 않습니다.

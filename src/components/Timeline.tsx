@@ -228,16 +228,16 @@ export default function Timeline({ filterAlbum, filterLiked }: Props) {
     const wasEmpty = items.length === 0;
     const prevTopTakenAt = items[0]?.takenAt ?? null;
     setUploadProgress({ done: 0, total: pendingFiles.length });
-    const { errors } = await uploadFiles(pendingFiles, (done, total) => setUploadProgress({ done, total }));
+    const { errors, photoCount, videoCount } = await uploadFiles(pendingFiles, (done, total) =>
+      setUploadProgress({ done, total })
+    );
     setUploadProgress(null);
     setPendingFiles(null);
-    if (errors.length) {
-      alert(`일부 업로드 실패:\n${errors.join("\n")}`);
-    } else {
-      // 실패가 하나도 없을 때만 상대방에게 알림 — 파일별로 안 보내고 배치가
-      // 다 끝난 뒤 한 번만 개수를 모아서 보냄(사진 10장 올릴 때 알림 10번 X)
-      const photoCount = pendingFiles.filter((f) => !f.type.startsWith("video/")).length;
-      const videoCount = pendingFiles.filter((f) => f.type.startsWith("video/")).length;
+    if (errors.length) alert(`일부 업로드 실패:\n${errors.join("\n")}`);
+    // 실제로 성공한 개수만큼만 상대방에게 알림 — 일부 실패해도 나머지 성공한
+    // 파일만큼은 알림이 가야 하고, 파일별로 안 보내고 배치가 다 끝난 뒤 한
+    // 번만 모아서 보냄(사진 10장 올릴 때 알림 10번 X)
+    if (photoCount > 0 || videoCount > 0) {
       fetch("/api/media/notify-upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

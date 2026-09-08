@@ -230,7 +230,8 @@ async function runPool(
   queue: File[],
   poolConcurrency: number,
   errors: string[],
-  onFileDone: () => void
+  onFileDone: () => void,
+  onFileSuccess: (file: File) => void
 ) {
   async function worker() {
     let file = queue.shift();
@@ -251,6 +252,7 @@ async function runPool(
           // uploadWithRetry를 불러서 한 파일에 최대 6번까지 재시도하게 됨)
           await uploadWithRetry(currentFile);
         }
+        onFileSuccess(currentFile);
       } catch (e) {
         if (!prefetched) {
           errors.push(e instanceof Error ? e.message : String(e));
@@ -261,6 +263,7 @@ async function runPool(
             // 경우 이전 mediaId의 원본이 고아로 남게 됨. 이미 준비된
             // prefetched.prepared(mediaId 포함)를 그대로 재사용해서 재시도함
             await sendWithRetry(prefetched.prepared, currentFile.name);
+            onFileSuccess(currentFile);
           } catch (e2) {
             errors.push(e2 instanceof Error ? e2.message : String(e2));
           }
@@ -281,20 +284,29 @@ export async function uploadFiles(
   let done = 0;
   const total = files.length;
   const errors: string[] = [];
-  if (!total) return { errors };
+  let photoCount = 0;
+  let videoCount = 0;
+  if (!total) return { errors, photoCount, videoCount };
 
   const onFileDone = () => {
     done++;
     onProgress(done, total);
+  };
+  // 배치 중 일부만 실패해도 실제로 성공한 파일만 정확히 세어서, 상대방에게
+  // 성공한 개수만큼은 알림이 가게 함 (전부 성공했을 때만 알림 보내면 10장
+  // 중 1장만 실패해도 나머지 9장의 알림이 통째로 사라짐)
+  const onFileSuccess = (file: File) => {
+    if (file.type.startsWith("video/")) videoCount++;
+    else photoCount++;
   };
 
   const small = files.filter((f) => f.size < LARGE_FILE_BYTES);
   const large = files.filter((f) => f.size >= LARGE_FILE_BYTES);
 
   await Promise.all([
-    runPool(small, concurrency, errors, onFileDone),
-    runPool(large, 1, errors, onFileDone),
+    runPool(small, concurrency, errors, onFileDone, onFileSuccess),
+    runPool(large, 1, errors, onFileDone, onFileSuccess),
   ]);
 
-  return { errors };
+  return { errors, photoCount, videoCount };
 }
