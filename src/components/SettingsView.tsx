@@ -9,7 +9,8 @@ export default function SettingsView() {
   const router = useRouter();
   const [supported] = useState(isPushSupported);
   const [enabled, setEnabled] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [busyDirection, setBusyDirection] = useState<"enabling" | "disabling" | null>(null);
+  const busy = busyDirection !== null;
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -21,19 +22,20 @@ export default function SettingsView() {
 
   async function toggle() {
     if (busy) return;
-    setBusy(true);
     setError(null);
     try {
       if (enabled) {
+        setBusyDirection("disabling");
         await disablePush();
         setEnabled(false);
       } else {
+        setBusyDirection("enabling");
         const res = await enablePush();
         if (res.ok) setEnabled(true);
         else setError(res.error ?? "알림을 켜지 못했어요.");
       }
     } finally {
-      setBusy(false);
+      setBusyDirection(null);
     }
   }
 
@@ -53,7 +55,11 @@ export default function SettingsView() {
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-[15px] text-foreground">업로드 알림</p>
-            <p className="truncate text-[12px] text-muted">상대방이 사진/동영상을 올리면 알려드려요</p>
+            <p className="truncate text-[12px] text-muted">
+              {busyDirection === "enabling"
+                ? "등록 중이에요… (몇 초 걸릴 수 있어요)"
+                : "상대방이 사진/동영상을 올리면 알려드려요"}
+            </p>
           </div>
           <button
             role="switch"
