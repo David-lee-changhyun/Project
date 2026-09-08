@@ -180,51 +180,79 @@ async function uploadWithRetry(file: File, maxAttempts = 3) {
   return sendWithRetry(prepared, file.name, maxAttempts);
 }
 
-// 브라우저가 알려주는 "연결 종류"(navigator.connection.type/effectiveType)는
-// 신뢰할 수 없음 — 최신 크롬(안드로이드 포함)은 type을 거의 안 주고,
-// LTE도 대부분 effectiveType을 '4g'로 보고해서 "셀룰러라 좁다"는 걸 코드로
-// 미리 구분하는 게 사실상 불가능함(실제로 이걸로 시도했다가 실기기에서
-// 전혀 안 먹혔음). 그래서 연결 종류를 추측하지 않고, 와이파이든 LTE든
-// 항상 안전한 방식(파일을 하나씩 순서대로 보내되, 다음 파일 준비와 업로드
-// 주소 발급을 지금 파일이 전송되는 동안 미리 해둬서 왕복 대기시간을 숨김)
-// 하나로 통일함. presign 요청은 몇 KB짜리라 큰 파일 전송과 같이 나가도
-// 대역폭에 영향이 거의 없음
-export async function uploadFiles(files: File[], onProgress: (done: number, total: number) => void) {
+async function prepareAndPresign(file: File) {
+  const prepared = await prepareUpload(file);
+  const presigned = await requestPresign(prepared, file.name);
+  return { prepared, presigned };
+}
+
+// 큰 파일(동영상 등)이 올라가는 동안 다른 파일이 하나도 못 올라가면
+// 진행률이 통째로 멈춘 것처럼 보임(실제로 수 초~수십 초씩 그래 보임).
+// 그렇다고 큰 파일을 여러 개 동시에 보내는 건 대역폭만 나눠 갖고 손해라,
+// "작은 파일들은 동시에 여러 개, 큰 파일은 한 번에 하나씩" 두 줄을
+// 따로 돌려서 큰 파일이 올라가는 동안에도 작은 파일들은 계속 진행되게 함.
+// 각 줄 안에서도 "다음 파일 준비 + 업로드 주소 발급"을 지금 파일이 실제로
+// 전송되는 동안 미리 해둬서 왕복 대기시간을 숨김
+const LARGE_FILE_BYTES = 20 * 1024 * 1024;
+
+async function runPool(
+  queue: File[],
+  poolConcurrency: number,
+  errors: string[],
+  onFileDone: () => void
+) {
+  async function worker() {
+    let file = queue.shift();
+    let next = file ? prepareAndPresign(file).catch(() => null) : null;
+    while (file) {
+      const currentFile = file;
+      const prefetched = await next;
+      file = queue.shift();
+      next = file ? prepareAndPresign(file).catch(() => null) : null;
+
+      try {
+        if (prefetched) {
+          await putAndFinalize(prefetched.prepared, prefetched.presigned, currentFile.name);
+        } else {
+          // 미리 준비/주소 발급이 실패했으면 이 파일은 처음부터 다시 시도
+          await uploadWithRetry(currentFile);
+        }
+      } catch {
+        try {
+          await uploadWithRetry(currentFile);
+        } catch (e) {
+          errors.push(e instanceof Error ? e.message : String(e));
+        }
+      } finally {
+        onFileDone();
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(poolConcurrency, queue.length) }, worker));
+}
+
+export async function uploadFiles(
+  files: File[],
+  onProgress: (done: number, total: number) => void,
+  concurrency = 4
+) {
   let done = 0;
   const total = files.length;
   const errors: string[] = [];
   if (!total) return { errors };
 
-  async function prepareAndPresign(file: File) {
-    const prepared = await prepareUpload(file);
-    const presigned = await requestPresign(prepared, file.name);
-    return { prepared, presigned };
-  }
+  const onFileDone = () => {
+    done++;
+    onProgress(done, total);
+  };
 
-  let next = prepareAndPresign(files[0]).catch(() => null);
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i];
-    const prefetched = await next;
-    next = i + 1 < files.length ? prepareAndPresign(files[i + 1]).catch(() => null) : Promise.resolve(null);
+  const small = files.filter((f) => f.size < LARGE_FILE_BYTES);
+  const large = files.filter((f) => f.size >= LARGE_FILE_BYTES);
 
-    try {
-      if (prefetched) {
-        await putAndFinalize(prefetched.prepared, prefetched.presigned, file.name);
-      } else {
-        // 미리 준비/주소 발급이 실패했으면 이 파일은 처음부터 다시 시도
-        await uploadWithRetry(file);
-      }
-    } catch {
-      try {
-        await uploadWithRetry(file);
-      } catch (e) {
-        errors.push(e instanceof Error ? e.message : String(e));
-      }
-    } finally {
-      done++;
-      onProgress(done, total);
-    }
-  }
+  await Promise.all([
+    runPool(small, concurrency, errors, onFileDone),
+    runPool(large, 1, errors, onFileDone),
+  ]);
 
   return { errors };
 }
