@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { format, isToday, isYesterday } from "date-fns";
+import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { Plus, Download, Trash2, Image as ImageIcon, FolderPlus, X } from "lucide-react";
 import type { MediaItem } from "@/lib/types";
@@ -17,8 +17,6 @@ function groupLabel(ts: number, mode: ViewMode) {
   const d = new Date(ts);
   if (mode === "year") return format(d, "yyyy년", { locale: ko });
   if (mode === "month") return format(d, "yyyy년 M월", { locale: ko });
-  if (isToday(d)) return "오늘";
-  if (isYesterday(d)) return "어제";
   return format(d, "yyyy년 M월 d일 (EEE)", { locale: ko });
 }
 
