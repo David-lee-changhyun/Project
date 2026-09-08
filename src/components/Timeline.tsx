@@ -207,6 +207,7 @@ export default function Timeline({ filterAlbum, filterLiked }: Props) {
   async function startUpload() {
     if (!pendingFiles?.length) return;
     const wasEmpty = items.length === 0;
+    const prevTopTakenAt = items[0]?.takenAt ?? null;
     setUploadProgress({ done: 0, total: pendingFiles.length });
     const { errors } = await uploadFiles(pendingFiles, (done, total) =>
       setUploadProgress({ done, total })
@@ -215,19 +216,34 @@ export default function Timeline({ filterAlbum, filterLiked }: Props) {
     setPendingFiles(null);
     if (errors.length) alert(`일부 업로드 실패:\n${errors.join("\n")}`);
 
-    // 방금 올린 사진들만 최신 목록(1페이지)에서 가져와 앞에 끼워 넣음.
-    // 예전엔 목록 전체를 비우고 처음부터 다시 불러왔는데, 그러면 이미
-    // "더 보기"로 로드해둔 페이지까지 통째로 버려지고 다시 받아와야 해서
-    // 사진이 많을수록(수천~수만 장) 느려지는 문제가 있었음
-    const res = await fetch(query(null));
-    const data = (await res.json()) as { items: MediaItem[]; nextCursor: string | null };
+    // 방금 올린 사진들만 최신 목록에서 가져와 앞에 끼워 넣음. 예전엔 목록
+    // 전체를 비우고 처음부터 다시 불러왔는데, 그러면 이미 "더 보기"로
+    // 로드해둔 페이지까지 통째로 버려지고 다시 받아와야 해서 사진이
+    // 많을수록(수천~수만 장) 느려지는 문제가 있었음.
+    // 단, 한 번에 60장(1페이지) 넘게 올리면 새로 올린 사진이 여러 페이지에
+    // 걸치므로, 기존 목록의 맨 위 사진 시각(prevTopTakenAt)까지 이어지도록
+    // 필요한 만큼 페이지를 계속 이어받아야 중간에 사진이 비지 않음
+    let cursor: string | null = null;
+    let nextCursor: string | null = null;
+    const fresh: MediaItem[] = [];
+    for (let page = 0; page < 50; page++) {
+      const res = await fetch(query(cursor));
+      const data = (await res.json()) as { items: MediaItem[]; nextCursor: string | null };
+      fresh.push(...data.items);
+      nextCursor = data.nextCursor;
+      const last = data.items[data.items.length - 1];
+      const reachedOldTop = prevTopTakenAt !== null && !!last && last.takenAt <= prevTopTakenAt;
+      if (!nextCursor || reachedOldTop) break;
+      cursor = nextCursor;
+    }
+
     setItems((prev) => {
-      if (prev.length === 0) return data.items;
+      if (prev.length === 0) return fresh;
       const existingIds = new Set(prev.map((i) => i.id));
-      const freshItems = data.items.filter((i) => !existingIds.has(i.id));
+      const freshItems = fresh.filter((i) => !existingIds.has(i.id));
       return freshItems.length ? [...freshItems, ...prev] : prev;
     });
-    if (wasEmpty) setCursor(data.nextCursor);
+    if (wasEmpty) setCursor(nextCursor);
   }
 
   const groups: { label: string; items: MediaItem[] }[] = [];

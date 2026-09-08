@@ -106,7 +106,10 @@ async function uploadWithRetry(file: File, maxAttempts = 3) {
 // 큰 파일은 한 번에 하나씩만 보내도록 큐를 나눔
 const LARGE_FILE_BYTES = 20 * 1024 * 1024;
 
-// 동시 업로드 개수를 제한해서 여러 장을 안정적으로 업로드
+// 동시 업로드 개수를 제한해서 여러 장을 안정적으로 업로드.
+// 작은 사진 큐(최대 concurrency개)와 큰 파일 큐(최대 1개)가 동시에 돌기
+// 때문에 순간 최대 동시 요청 수는 concurrency + 1이 될 수 있음 — 의도된
+// 동작으로, 사진들끼리는 병렬로 겹치되 큰 파일끼리만 경합하지 않게 하는 것이 목적
 export async function uploadFiles(
   files: File[],
   onProgress: (done: number, total: number) => void,

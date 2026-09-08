@@ -19,7 +19,15 @@ export async function GET(
   // 그리드 하나에 썸네일 수십 개가 동시에 요청되는 가장 뜨거운 경로라
   // 세션 확인 + 미디어 조회를 순차 왕복 2번이 아니라 batch()로 한 번에 묶어서 보냄
   const [sessionResult, mediaResult] = await db.batch<Record<string, unknown>>([
-    db.prepare(`SELECT expires_at as expiresAt FROM sessions WHERE id = ?`).bind(sessionId),
+    // getCurrentUser()와 동일하게 users와 join해서 세션의 유저가 실제로
+    // 존재하는지까지 확인 (배치로 묶기 전 로직과 동작을 그대로 맞춤)
+    db
+      .prepare(
+        `SELECT s.expires_at as expiresAt, u.id as userId
+         FROM sessions s JOIN users u ON u.id = s.user_id
+         WHERE s.id = ?`
+      )
+      .bind(sessionId),
     db
       .prepare(
         `SELECT r2_key as r2Key, content_type as contentType, file_name as fileName,
@@ -29,7 +37,7 @@ export async function GET(
       .bind(id),
   ]);
 
-  const session = sessionResult.results?.[0] as { expiresAt: number } | undefined;
+  const session = sessionResult.results?.[0] as { expiresAt: number; userId: string } | undefined;
   if (!session || session.expiresAt < Date.now()) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }

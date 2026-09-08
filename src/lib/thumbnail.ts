@@ -25,6 +25,12 @@ function drawScaled(
   ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
 }
 
+// createImageBitmap에 resizeWidth를 주면 이 크기로 "딱 맞춰서" 만들기 때문에,
+// 원본이 이미 이 값보다 작으면 오히려 확대(업스케일)돼서 화질이 나빠짐.
+// 실제 카메라 사진(수백 KB~수 MB)에서만 의미 있는 최적화라, 화면 캡처/스티커
+// 처럼 작은 파일에는 적용하지 않기 위한 기준
+const RESIZE_HINT_MIN_BYTES = 400 * 1024;
+
 async function imageThumbnail(file: File): Promise<File | null> {
   const url = URL.createObjectURL(file);
   try {
@@ -34,11 +40,15 @@ async function imageThumbnail(file: File): Promise<File | null> {
     // 축소하는 꼴이라, 업로드 시작 전에 매 사진마다 그 디코딩 시간이 그대로
     // 딜레이로 잡혔음. 세로/가로 어느 쪽이 긴 변인지는 미리 알 수 없어서
     // width만 맞추고, 정확한 "긴 변 기준 480px" 크기는 아래 drawScaled에서
-    // (이미 작아진 비트맵 기준이라 사실상 공짜로) 마무리함
-    const bitmap = await createImageBitmap(file, {
-      resizeWidth: MAX_DIMENSION,
-      resizeQuality: "medium",
-    }).catch(async () => {
+    // (이미 작아진 비트맵 기준이라 사실상 공짜로) 마무리함.
+    // 다만 원본이 480px보다 작을 수도 있는 작은 파일은 업스케일을 피하기
+    // 위해 이 힌트 없이 원래 크기 그대로 디코딩함
+    const bitmap = await createImageBitmap(
+      file,
+      file.size >= RESIZE_HINT_MIN_BYTES
+        ? { resizeWidth: MAX_DIMENSION, resizeQuality: "medium" }
+        : {}
+    ).catch(async () => {
       const img = new Image();
       img.src = url;
       await new Promise((resolve, reject) => {

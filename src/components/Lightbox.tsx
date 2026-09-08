@@ -156,6 +156,7 @@ export default function Lightbox({
               src={src}
               alt=""
               onLoad={() => setImgLoaded(true)}
+              onError={() => setImgLoaded(true)}
               className={`max-h-full max-w-full object-contain transition-opacity duration-150 ${
                 imgLoaded ? "opacity-100" : "opacity-0"
               }`}
