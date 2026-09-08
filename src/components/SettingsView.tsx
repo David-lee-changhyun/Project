@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bell, LogOut, ChevronRight } from "lucide-react";
-import { isPushSubscribed, isPushSupported, enablePush, disablePush } from "@/lib/push";
+import { isPushSubscribed, isPushSupported, enablePush, disablePush, preloadPushDeps } from "@/lib/push";
 
 export default function SettingsView() {
   const router = useRouter();
@@ -14,6 +14,9 @@ export default function SettingsView() {
 
   useEffect(() => {
     isPushSubscribed().then(setEnabled);
+    // 토글을 실제로 누르기 전에 VAPID 공개키를 미리 받아둬서, 누르는 순간엔
+    // 이미 캐시돼 있게 함 (안 그러면 매번 이 요청까지 기다려야 해서 느려 보임)
+    preloadPushDeps();
   }, []);
 
   async function toggle() {
@@ -60,13 +63,19 @@ export default function SettingsView() {
             disabled={busy || !supported}
             className={`tap-scale relative h-[26px] w-[44px] shrink-0 overflow-hidden rounded-full transition-colors ${
               enabled ? "bg-accent" : "bg-border"
-            } disabled:opacity-50`}
+            } disabled:opacity-70`}
           >
             <span
-              className={`absolute left-0 top-[2px] h-[22px] w-[22px] rounded-full bg-white shadow transition-transform ${
+              className={`absolute left-0 top-[2px] flex h-[22px] w-[22px] items-center justify-center rounded-full bg-white shadow transition-transform ${
                 enabled ? "translate-x-[20px]" : "translate-x-[2px]"
               }`}
-            />
+            >
+              {/* 눌렀을 때 바로 반응이 없어 보이지 않도록, 네트워크 왕복(권한 요청/구독)이
+                  끝날 때까지 손잡이 안에 작은 스피너를 보여줌 */}
+              {busy && (
+                <span className="h-3 w-3 animate-spin rounded-full border-[1.5px] border-border border-t-accent" />
+              )}
+            </span>
           </button>
         </div>
       </div>

@@ -11,6 +11,31 @@ export function isPushSupported(): boolean {
   return typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window;
 }
 
+// VAPID 공개키는 배포 후 안 바뀌는 값이라, 설정 화면에 들어오자마자 미리
+// 받아둬서 실제로 토글을 켤 때는 이 네트워크 왕복을 안 기다리게 함(토글
+// 반응이 느리게 느껴지던 원인 중 하나 — 매번 새로 fetch하고 있었음)
+let vapidKeyPromise: Promise<string> | null = null;
+function getVapidPublicKey(): Promise<string> {
+  if (!vapidKeyPromise) {
+    vapidKeyPromise = fetch("/api/push/vapid-public-key")
+      .then((res) => {
+        if (!res.ok) throw new Error("vapid key fetch failed");
+        return res.json() as Promise<{ publicKey: string }>;
+      })
+      .then((d) => d.publicKey)
+      .catch((e) => {
+        vapidKeyPromise = null; // 실패하면 다음 시도 때 다시 받도록
+        throw e;
+      });
+  }
+  return vapidKeyPromise;
+}
+
+export function preloadPushDeps() {
+  if (!isPushSupported()) return;
+  navigator.serviceWorker.ready.then(() => getVapidPublicKey().catch(() => {}));
+}
+
 export async function isPushSubscribed(): Promise<boolean> {
   if (!isPushSupported()) return false;
   const reg = await navigator.serviceWorker.ready;
@@ -28,9 +53,12 @@ export async function enablePush(): Promise<{ ok: boolean; error?: string }> {
   }
 
   const reg = await navigator.serviceWorker.ready;
-  const keyRes = await fetch("/api/push/vapid-public-key");
-  if (!keyRes.ok) return { ok: false, error: "알림 설정 중 오류가 발생했어요." };
-  const { publicKey } = (await keyRes.json()) as { publicKey: string };
+  let publicKey: string;
+  try {
+    publicKey = await getVapidPublicKey();
+  } catch {
+    return { ok: false, error: "알림 설정 중 오류가 발생했어요." };
+  }
 
   const sub =
     (await reg.pushManager.getSubscription()) ??
