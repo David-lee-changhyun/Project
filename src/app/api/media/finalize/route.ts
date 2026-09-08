@@ -45,23 +45,25 @@ export async function POST(req: NextRequest) {
 
   const bucket = await getBucket();
   const r2Key = buildR2Key(user.id, mediaId, fileName);
+  const thumbnailFileName =
+    typeof body?.thumbnailFileName === "string" && body.thumbnailFileName ? body.thumbnailFileName : null;
+  const thumbnailR2KeyCandidate = thumbnailFileName ? buildR2Key(user.id, mediaId, thumbnailFileName) : null;
 
-  // presigned URL로 클라이언트가 실제로 R2 업로드를 마쳤는지 확인.
+  // presigned URL로 클라이언트가 실제로 R2 업로드를 마쳤는지 확인 (원본/썸네일
+  // 둘 다 서로 독립적인 조회라 순차로 기다릴 필요 없이 동시에 확인함).
   // 이 확인 없이 바로 DB에 기록하면, 중간에 업로드가 끊겼는데도
   // 성공한 것처럼 기록되는 유령 항목이 생길 수 있음
-  const uploaded = await bucket.head(r2Key);
+  const [uploaded, thumbnailUploaded] = await Promise.all([
+    bucket.head(r2Key),
+    thumbnailR2KeyCandidate ? bucket.head(thumbnailR2KeyCandidate) : Promise.resolve(null),
+  ]);
   if (!uploaded) {
     return NextResponse.json(
       { error: "업로드가 완료되지 않았습니다. 다시 시도해주세요." },
       { status: 409 }
     );
   }
-
-  let thumbnailR2Key: string | null = null;
-  if (typeof body?.thumbnailFileName === "string" && body.thumbnailFileName) {
-    const key = buildR2Key(user.id, mediaId, body.thumbnailFileName);
-    if (await bucket.head(key)) thumbnailR2Key = key;
-  }
+  const thumbnailR2Key = thumbnailUploaded ? thumbnailR2KeyCandidate : null;
 
   const db = await getDb();
   const now = Date.now();

@@ -28,13 +28,14 @@ export async function POST(req: NextRequest) {
 
   const mediaId = newId("media");
   const r2Key = buildR2Key(user.id, mediaId, fileName);
-  const uploadUrl = await presignR2Put(r2Key);
+  const hasThumbnail = typeof body?.thumbnailFileName === "string" && !!body.thumbnailFileName;
+  const thumbnailR2Key = hasThumbnail ? buildR2Key(user.id, mediaId, body!.thumbnailFileName!) : null;
 
-  let thumbnailUploadUrl: string | null = null;
-  if (typeof body?.thumbnailFileName === "string" && body.thumbnailFileName) {
-    const thumbnailR2Key = buildR2Key(user.id, mediaId, body.thumbnailFileName);
-    thumbnailUploadUrl = await presignR2Put(thumbnailR2Key);
-  }
+  // 원본/썸네일 서명 URL은 서로 독립적이라 순차로 기다릴 필요 없이 동시에 발급
+  const [uploadUrl, thumbnailUploadUrl] = await Promise.all([
+    presignR2Put(r2Key),
+    thumbnailR2Key ? presignR2Put(thumbnailR2Key) : Promise.resolve(null),
+  ]);
 
   return NextResponse.json({ mediaId, uploadUrl, thumbnailUploadUrl });
 }

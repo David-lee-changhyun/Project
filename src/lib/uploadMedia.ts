@@ -214,14 +214,21 @@ async function runPool(
         if (prefetched) {
           await putAndFinalize(prefetched.prepared, prefetched.presigned, currentFile.name);
         } else {
-          // 미리 준비/주소 발급이 실패했으면 이 파일은 처음부터 다시 시도
+          // 미리 준비/주소 발급 자체가 실패했으면 이 파일은 처음부터 다시 시도.
+          // uploadWithRetry가 이미 자체적으로 최대 3번 재시도하므로, 이게 실패하면
+          // 더 재시도하지 않고 바로 실패 처리함 (안 그러면 아래 catch에서 또
+          // uploadWithRetry를 불러서 한 파일에 최대 6번까지 재시도하게 됨)
           await uploadWithRetry(currentFile);
         }
-      } catch {
-        try {
-          await uploadWithRetry(currentFile);
-        } catch (e) {
+      } catch (e) {
+        if (!prefetched) {
           errors.push(e instanceof Error ? e.message : String(e));
+        } else {
+          try {
+            await uploadWithRetry(currentFile);
+          } catch (e2) {
+            errors.push(e2 instanceof Error ? e2.message : String(e2));
+          }
         }
       } finally {
         onFileDone();
