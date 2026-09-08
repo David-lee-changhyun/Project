@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { format, isToday, isYesterday } from "date-fns";
 import { ko } from "date-fns/locale";
-import { Plus, Download, Trash2, Image as ImageIcon, FolderPlus } from "lucide-react";
+import { Plus, Download, Trash2, Image as ImageIcon, FolderPlus, X } from "lucide-react";
 import type { MediaItem } from "@/lib/types";
 import MediaThumb from "@/components/MediaThumb";
 import Lightbox from "@/components/Lightbox";
@@ -35,6 +36,19 @@ type Props = {
 type UserOption = { id: string; displayName: string };
 
 export default function Timeline({ filterAlbum, filterLiked }: Props) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  // 캘린더에서 날짜를 탭해서 들어온 경우 (?date=yyyy-MM-dd)
+  const dateParam = searchParams.get("date");
+  const dayRange = useMemo(() => {
+    if (!dateParam) return null;
+    const [y, m, d] = dateParam.split("-").map(Number);
+    if (!y || !m || !d) return null;
+    // new Date(y, m-1, d)는 브라우저의 실제 로컬 시간대 기준 자정이라
+    // (문자열을 그대로 new Date()에 넘기면 UTC로 해석돼서 어긋남) 타임존 문제가 없음
+    return { start: new Date(y, m - 1, d).getTime(), end: new Date(y, m - 1, d + 1).getTime() };
+  }, [dateParam]);
+
   const [items, setItems] = useState<MediaItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -79,9 +93,13 @@ export default function Timeline({ filterAlbum, filterLiked }: Props) {
       if (filterAlbum) params.set("album", filterAlbum);
       if (filterLiked) params.set("liked", "1");
       if (uploaderFilter) params.set("uploader", uploaderFilter);
+      if (dayRange) {
+        params.set("dayStart", String(dayRange.start));
+        params.set("dayEnd", String(dayRange.end));
+      }
       return `/api/media?${params.toString()}`;
     },
-    [filterAlbum, filterLiked, uploaderFilter]
+    [filterAlbum, filterLiked, uploaderFilter, dayRange]
   );
 
   const load = useCallback(
@@ -260,6 +278,20 @@ export default function Timeline({ filterAlbum, filterLiked }: Props) {
 
   return (
     <div className="flex flex-1 flex-col">
+      {dayRange && (
+        <div className="flex items-center justify-between px-4 pb-1 pt-2">
+          <h1 className="text-[17px] font-semibold tracking-tight">
+            {format(new Date(dayRange.start), "yyyy년 M월 d일 (EEE)", { locale: ko })}
+          </h1>
+          <button
+            onClick={() => router.push("/")}
+            aria-label="날짜 필터 해제"
+            className="tap-scale flex h-7 w-7 items-center justify-center rounded-full bg-surface text-muted"
+          >
+            <X className="h-4 w-4" strokeWidth={2.2} />
+          </button>
+        </div>
+      )}
       <div className="flex items-center justify-between px-4 py-2">
         <button
           onClick={() => {

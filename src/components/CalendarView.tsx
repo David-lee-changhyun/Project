@@ -1,10 +1,137 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { differenceInCalendarDays, format } from "date-fns";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  differenceInCalendarDays,
+  format,
+  startOfMonth,
+  endOfMonth,
+  eachDayOfInterval,
+  addMonths,
+  subMonths,
+  getDay,
+  isToday,
+  isSameMonth,
+} from "date-fns";
 import { ko } from "date-fns/locale";
-import { Heart, CalendarDays, Plus, X } from "lucide-react";
+import { Heart, CalendarDays, Plus, X, ChevronLeft, ChevronRight } from "lucide-react";
 import type { CalendarEvent } from "@/lib/types";
+
+const WEEKDAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
+
+function dayKey(d: Date) {
+  return format(d, "yyyy-MM-dd");
+}
+
+// 사진 달력: 달마다 날짜별 업로드 개수를 가벼운 API 하나로 받아와서 뱃지로 표시.
+// 사진 원본은 전혀 안 가져오고, 타임스탬프 그룹핑도 브라우저(로컬 시간대)에서
+// 하기 때문에 사진이 아무리 많아도 이 화면 자체는 항상 가벼움
+function PhotoCalendar() {
+  const router = useRouter();
+  const [month, setMonth] = useState(() => startOfMonth(new Date()));
+  const [counts, setCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    const from = month.getTime();
+    const to = addMonths(month, 1).getTime();
+    let cancelled = false;
+    fetch(`/api/media/day-counts?from=${from}&to=${to}`)
+      .then((r) => r.json() as Promise<{ takenAts: number[] }>)
+      .then((d) => {
+        if (cancelled) return;
+        const next: Record<string, number> = {};
+        for (const ts of d.takenAts ?? []) {
+          const key = dayKey(new Date(ts));
+          next[key] = (next[key] ?? 0) + 1;
+        }
+        setCounts(next);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [month]);
+
+  const days = useMemo(() => {
+    const start = startOfMonth(month);
+    const end = endOfMonth(month);
+    const all = eachDayOfInterval({ start, end });
+    // 1일이 무슨 요일이든 첫 주 앞을 비워서 요일 줄을 맞춤
+    const leadingBlanks = Array.from({ length: getDay(start) }, () => null);
+    return [...leadingBlanks, ...all];
+  }, [month]);
+
+  return (
+    <section className="mb-8">
+      <div className="mb-2 flex items-center justify-between px-1">
+        <h2 className="text-[13px] font-semibold uppercase tracking-wide text-muted">사진 달력</h2>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setMonth((m) => subMonths(m, 1))}
+            aria-label="이전 달"
+            className="tap-scale flex h-7 w-7 items-center justify-center rounded-full text-muted"
+          >
+            <ChevronLeft className="h-4 w-4" strokeWidth={2.2} />
+          </button>
+          <span className="min-w-[76px] text-center text-[13px] font-medium text-foreground">
+            {format(month, "yyyy년 M월", { locale: ko })}
+          </span>
+          <button
+            onClick={() => setMonth((m) => addMonths(m, 1))}
+            aria-label="다음 달"
+            className="tap-scale flex h-7 w-7 items-center justify-center rounded-full text-muted"
+          >
+            <ChevronRight className="h-4 w-4" strokeWidth={2.2} />
+          </button>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-[14px] bg-surface p-2">
+        <div className="mb-1 grid grid-cols-7">
+          {WEEKDAY_LABELS.map((w) => (
+            <div key={w} className="py-1 text-center text-[11px] font-medium text-muted-2">
+              {w}
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-7 gap-y-1">
+          {days.map((d, i) => {
+            if (!d) return <div key={`b${i}`} />;
+            const key = dayKey(d);
+            const count = counts[key] ?? 0;
+            return (
+              <button
+                key={key}
+                disabled={count === 0}
+                onClick={() => router.push(`/?date=${key}`)}
+                className="tap-scale flex flex-col items-center gap-0.5 py-1 disabled:opacity-100"
+              >
+                <span
+                  className={`flex h-7 w-7 items-center justify-center rounded-full text-[13px] ${
+                    isToday(d)
+                      ? "bg-accent font-semibold text-white"
+                      : isSameMonth(d, month)
+                        ? "text-foreground"
+                        : "text-muted-2"
+                  }`}
+                >
+                  {format(d, "d")}
+                </span>
+                <span
+                  className={`text-[9px] font-semibold leading-none ${
+                    count > 0 ? "text-accent" : "text-transparent"
+                  }`}
+                >
+                  {count > 0 ? count : "·"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
 
 function nextOccurrence(eventDate: number, repeatYearly: boolean) {
   const original = new Date(eventDate);
@@ -143,6 +270,8 @@ export default function CalendarView() {
           })}
         </div>
       )}
+
+      <PhotoCalendar />
 
       {showForm && (
         <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center">

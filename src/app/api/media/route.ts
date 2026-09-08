@@ -21,6 +21,10 @@ export async function GET(req: NextRequest) {
   const uploader = searchParams.get("uploader"); // owner_id로 업로더 필터 (전체/나/상대방)
   const albumId = searchParams.get("album");
   const liked = searchParams.get("liked");
+  // 캘린더에서 특정 날짜를 탭해서 들어올 때 쓰는 범위 필터 (ms, 클라이언트가
+  // 사용자의 로컬 시간대 기준으로 그 날의 시작/끝을 계산해서 보냄)
+  const dayStart = searchParams.get("dayStart");
+  const dayEnd = searchParams.get("dayEnd");
 
   const db = await getDb();
 
@@ -30,6 +34,10 @@ export async function GET(req: NextRequest) {
   if (cursor) {
     conditions.push("m.taken_at < ?");
     params.push(Number(cursor));
+  }
+  if (dayStart && dayEnd) {
+    conditions.push("m.taken_at >= ? AND m.taken_at < ?");
+    params.push(Number(dayStart), Number(dayEnd));
   }
   if (type === "photo" || type === "video") {
     conditions.push("m.type = ?");
