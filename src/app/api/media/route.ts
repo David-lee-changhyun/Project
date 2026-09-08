@@ -1,87 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, getBucket } from "@/lib/cloudflare";
 import { requireUser, AuthError } from "@/lib/auth";
-import { newId } from "@/lib/ids";
-import { buildR2Key, detectType } from "@/lib/media";
-import { sha256Hex } from "@/lib/hash";
 
-const MAX_UPLOAD_BYTES = 200 * 1024 * 1024; // Workers 요청 바디 제한(무료 100MB) 고려, 여유 있게 안내용 상한
-
-export async function POST(req: NextRequest) {
-  let user;
-  try {
-    user = await requireUser();
-  } catch (e) {
-    if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: 401 });
-    throw e;
-  }
-
-  const form = await req.formData();
-  const file = form.get("file");
-  if (!(file instanceof File)) {
-    return NextResponse.json({ error: "파일이 없습니다." }, { status: 400 });
-  }
-  if (file.size > MAX_UPLOAD_BYTES) {
-    return NextResponse.json({ error: "파일이 너무 큽니다 (최대 200MB)." }, { status: 413 });
-  }
-
-  const type = detectType(file.type);
-  if (!type) {
-    return NextResponse.json({ error: "사진 또는 동영상 파일만 업로드할 수 있습니다." }, { status: 400 });
-  }
-
-  const takenAtRaw = form.get("takenAt");
-  const takenAt = takenAtRaw ? Number(takenAtRaw) : Date.now();
-  const widthRaw = form.get("width");
-  const heightRaw = form.get("height");
-
-  const mediaId = newId("media");
-  const r2Key = buildR2Key(user.id, mediaId, file.name || "upload");
-
-  // 그리드에서 빠르게 로드할 작은 미리보기 (클라이언트가 만들어 보낸 경우만)
-  const thumbnail = form.get("thumbnail");
-  const thumbnailR2Key =
-    thumbnail instanceof File ? buildR2Key(user.id, mediaId, `thumb_${file.name || "upload"}.jpg`) : null;
-
-  const bucket = await getBucket();
-  const fileBuffer = await file.arrayBuffer();
-  const [, , contentHash] = await Promise.all([
-    bucket.put(r2Key, fileBuffer, { httpMetadata: { contentType: file.type } }),
-    thumbnail instanceof File && thumbnailR2Key
-      ? bucket.put(thumbnailR2Key, await thumbnail.arrayBuffer(), {
-          httpMetadata: { contentType: "image/jpeg" },
-        })
-      : Promise.resolve(),
-    sha256Hex(fileBuffer),
-  ]);
-
-  const db = await getDb();
-  const now = Date.now();
-  await db
-    .prepare(
-      `INSERT INTO media
-        (id, owner_id, r2_key, type, content_type, file_name, size_bytes, width, height, taken_at, thumbnail_r2_key, content_hash, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    .bind(
-      mediaId,
-      user.id,
-      r2Key,
-      type,
-      file.type,
-      file.name || "upload",
-      file.size,
-      widthRaw ? Number(widthRaw) : null,
-      heightRaw ? Number(heightRaw) : null,
-      Number.isFinite(takenAt) ? takenAt : now,
-      thumbnailR2Key,
-      contentHash,
-      now
-    )
-    .run();
-
-  return NextResponse.json({ id: mediaId, takenAt: Number.isFinite(takenAt) ? takenAt : now });
-}
+// 업로드(파일 바이트 수신)는 /api/media/presign + /api/media/finalize로 이동함.
+// 클라이언트가 R2에 직접 PUT하고, 여긴 조회/삭제만 담당 (자세한 이유는
+// /api/media/presign/route.ts, /api/media/finalize/route.ts 참고)
 
 export async function GET(req: NextRequest) {
   try {

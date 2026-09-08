@@ -11,8 +11,56 @@
 - **workers.dev 서브도메인**: `leech-album`
 - **실제 접속 주소**: https://shared-album.leech-album.workers.dev
 - **가입 초대 코드**: `SIGNUP_INVITE_CODE` 시크릿으로 등록함 (값은 본인만 기억 — 코드에는 저장되지 않음)
+- **R2 직접 업로드용 시크릿(`R2_ACCOUNT_ID`/`R2_ACCESS_KEY_ID`/`R2_SECRET_ACCESS_KEY`)과 R2 버킷 CORS 설정은 아직 안 되어있음** — 아래 "업로드 속도 개선 설정" 섹션을 한 번 진행해야 사진 업로드가 정상 동작합니다.
 
 이 정보들은 `wrangler.jsonc` 파일(D1/R2 id)과 Cloudflare 대시보드(계정 설정)에 이미 반영되어 있어서, 저장소를 다시 클론만 하면 별도로 재생성할 필요 없습니다.
+
+---
+
+## 업로드 속도 개선(R2 직접 업로드) 설정 — 최초 1회만
+
+원래는 사진을 올리면 "핸드폰 → 우리 서버 → R2 저장소" 두 번 왕복했는데, 이제 "핸드폰 → R2 저장소" 한 번으로 줄여서 업로드가 훨씬 빨라지도록 바꿨습니다. 이 방식을 쓰려면 **R2용 API 키를 딱 한 번만** 만들어서 등록해야 합니다. (이미 등록해뒀다면 이 섹션은 건너뛰어도 됩니다.)
+
+### 1. R2 API 토큰 발급
+1. Cloudflare 대시보드 → 왼쪽 메뉴 **R2 Object Storage** 클릭
+2. 오른쪽 위 **"R2 API 토큰 관리" (Manage R2 API Tokens)** 클릭
+3. **"API 토큰 생성" (Create API Token)** 클릭
+4. 권한: **"객체 읽기 및 쓰기" (Object Read & Write)** 선택
+5. 적용 범위(버킷)는 `shared-album-media` 하나만 선택 (전체 계정 대신 이 버킷으로 좁히는 게 안전함)
+6. 생성하면 **Access Key ID**와 **Secret Access Key**가 화면에 뜸 — **이 화면을 벗어나면 Secret Access Key는 다시 못 봄**이므로 바로 복사해두기
+
+### 2. 시크릿 3개 등록
+```powershell
+npx wrangler secret put R2_ACCOUNT_ID
+# 값: d10a155ef10cae9ef2d1edb392b9f03c
+
+npx wrangler secret put R2_ACCESS_KEY_ID
+# 값: 방금 복사한 Access Key ID
+
+npx wrangler secret put R2_SECRET_ACCESS_KEY
+# 값: 방금 복사한 Secret Access Key
+```
+`SIGNUP_INVITE_CODE`와 마찬가지로 재배포 없이 바로 적용됩니다.
+
+### 3. R2 버킷에 CORS 설정 (필수 — 안 하면 업로드가 CORS 오류로 실패함)
+브라우저가 우리 서버를 안 거치고 R2에 직접 요청을 보내기 때문에, R2 버킷이 우리 앱 주소에서 오는 요청을 허용하도록 CORS를 설정해줘야 합니다.
+
+1. Cloudflare 대시보드 → **R2 Object Storage** → `shared-album-media` 버킷 클릭
+2. **Settings** 탭 → **CORS Policy** → **Add CORS policy**
+3. 아래 JSON을 그대로 붙여넣기 (실제 접속 주소로 이미 채워져 있음):
+```json
+[
+  {
+    "AllowedOrigins": ["https://shared-album.leech-album.workers.dev"],
+    "AllowedMethods": ["PUT"],
+    "AllowedHeaders": ["*"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+4. 저장
+
+이후 배포/재배포는 평소처럼 `npm run cf:deploy`만 하면 됩니다. 위 설정은 계정/버킷 단위라 앱을 재배포해도 다시 할 필요 없습니다.
 
 ---
 
@@ -137,6 +185,8 @@ npx wrangler secret put SIGNUP_INVITE_CODE
 | `next build` 시 `Property 'DB' does not exist on type 'CloudflareEnv'` 등 다수 타입 에러 | `cloudflare-env.d.ts`가 로컬에 없음 (git에는 커밋 안 함, 매번 생성해야 함) | `npm run cf:typegen` 먼저 실행 |
 | 배포 직후 `ERR_SSL_VERSION_OR_CIPHER_MISMATCH` | 방금 등록한 workers.dev 서브도메인의 DNS/SSL 전파 지연 | 1~5분 대기 후 재시도 |
 | Claude(AI)가 직접 배포를 못 함 | Claude가 실행되는 클라우드 환경 자체가 보안 정책상 Cloudflare API로 나가는 요청을 전부 차단함 (`api.cloudflare.com` 접속 거부) | 사용자 컴퓨터 터미널에서 직접 진행 |
+| 사진 업로드 시 "업로드 준비 실패" | `R2_ACCOUNT_ID`/`R2_ACCESS_KEY_ID`/`R2_SECRET_ACCESS_KEY` 시크릿이 등록 안 됨 | 위 "업로드 속도 개선 설정" 1~2단계 진행 |
+| 사진 업로드 시 브라우저 콘솔에 CORS 오류, 또는 "업로드 실패"가 계속 뜸 | R2 버킷에 CORS 정책이 없음 | 위 "업로드 속도 개선 설정" 3단계(CORS) 진행 |
 
 ---
 
