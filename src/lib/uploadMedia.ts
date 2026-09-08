@@ -85,20 +85,44 @@ async function prepareUpload(file: File): Promise<PreparedUpload> {
   return { mediaId, uploadFile, uploadBuffer, thumbnail, takenAt, contentHash };
 }
 
-async function putDirect(url: string, body: BodyInit, contentType: string, fileName: string) {
-  let res: Response;
-  try {
-    res = await fetch(url, { method: "PUT", body, headers: { "Content-Type": contentType } });
-  } catch {
-    // 네트워크 오류(연결 끊김, 백그라운드 전환 등) — 재시도 가치 있음
-    throw new UploadError(`네트워크 오류: ${fileName}`, true);
-  }
-  if (!res.ok) {
-    // R2 presigned URL 만료/서명 문제 등은 재시도해도 새 URL을 다시 받아야
-    // 하므로(=uploadWithRetry가 prepareUpload부터 다시 안 돌리는 한 무의미)
-    // 일단 재시도 가능으로 처리해 다음 시도에서 presign을 새로 받게 함
-    throw new UploadError(`업로드 실패: ${fileName}`, true);
-  }
+// fetch()는 업로드 진행률 이벤트를 제공하지 않아서(다운로드만 됨), 파일
+// 하나가 다 끝나야만 진행률이 움직이는 것처럼 보였음(사진 여러 장이 대역폭을
+// 나눠 쓰며 비슷한 시점에 끝나면 "0%로 한참 멈춰있다가 한꺼번에 끝나는"
+// 것처럼 보임). XMLHttpRequest는 upload.onprogress로 실제 전송 바이트를
+// 알려줘서, 그걸로 막대바를 처음부터 부드럽게 움직이게 함
+function putDirect(
+  url: string,
+  body: ArrayBuffer,
+  contentType: string,
+  fileName: string,
+  onBytes?: (loadedBytes: number) => void
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url);
+    xhr.setRequestHeader("Content-Type", contentType);
+    if (onBytes) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onBytes(e.loaded);
+      };
+    }
+    xhr.onerror = () => {
+      // 네트워크 오류(연결 끊김, 백그라운드 전환 등) — 재시도 가치 있음
+      reject(new UploadError(`네트워크 오류: ${fileName}`, true));
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onBytes?.(body.byteLength);
+        resolve();
+      } else {
+        // R2 presigned URL 만료/서명 문제 등은 재시도해도 새 URL을 다시 받아야
+        // 하므로(=uploadWithRetry가 prepareUpload부터 다시 안 돌리는 한 무의미)
+        // 일단 재시도 가능으로 처리해 다음 시도에서 presign을 새로 받게 함
+        reject(new UploadError(`업로드 실패: ${fileName}`, true));
+      }
+    };
+    xhr.send(body);
+  });
 }
 
 type PresignResult = { uploadUrl: string; thumbnailUploadUrl: string | null };
@@ -126,12 +150,29 @@ async function requestPresign(prepared: PreparedUpload, fileName: string): Promi
   return presignRes.json();
 }
 
-// R2에 직접 PUT(서버를 거치지 않음) -> 완료 알림(메타데이터 저장)
-async function putAndFinalize(prepared: PreparedUpload, presigned: PresignResult, fileName: string) {
+// R2에 직접 PUT(서버를 거치지 않음) -> 완료 알림(메타데이터 저장).
+// onBytes는 원본 파일 전송 바이트만 추적함(썸네일은 원본보다 훨씬 작아서
+// 진행률 계산에 안 넣어도 체감상 차이 없음) — 델타(증가분)로 콜백해서
+// 여러 파일의 진행 바이트를 하나의 전체 진행률로 그냥 더하기만 하면 되게 함
+async function putAndFinalize(
+  prepared: PreparedUpload,
+  presigned: PresignResult,
+  fileName: string,
+  onBytes?: (delta: number) => void
+) {
+  let originalLoaded = 0;
   await Promise.all([
-    putDirect(presigned.uploadUrl, prepared.uploadBuffer, prepared.uploadFile.type, fileName),
+    putDirect(presigned.uploadUrl, prepared.uploadBuffer, prepared.uploadFile.type, fileName, (loaded) => {
+      onBytes?.(loaded - originalLoaded);
+      originalLoaded = loaded;
+    }),
     presigned.thumbnailUploadUrl && prepared.thumbnail
-      ? putDirect(presigned.thumbnailUploadUrl, await prepared.thumbnail.arrayBuffer(), "image/jpeg", fileName)
+      ? putDirect(
+          presigned.thumbnailUploadUrl,
+          await prepared.thumbnail.arrayBuffer(),
+          "image/jpeg",
+          fileName
+        )
       : Promise.resolve(),
   ]);
 
@@ -167,12 +208,17 @@ function sleep(ms: number) {
 // 네트워크 문제로 실패하면 최대 2번 더 재시도 (파일당 최대 3번 시도).
 // prepareUpload(변환/썸네일/해시)는 재시도 때마다 다시 돌리지 않고 재사용하되,
 // presign은 매 시도마다 새로 받음 (서명 URL이 만료됐을 가능성 대비)
-async function sendWithRetry(prepared: PreparedUpload, fileName: string, maxAttempts = 3) {
+async function sendWithRetry(
+  prepared: PreparedUpload,
+  fileName: string,
+  onBytes?: (delta: number) => void,
+  maxAttempts = 3
+) {
   let lastError: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const presigned = await requestPresign(prepared, fileName);
-      return await putAndFinalize(prepared, presigned, fileName);
+      return await putAndFinalize(prepared, presigned, fileName, onBytes);
     } catch (e) {
       lastError = e;
       const retryable = e instanceof UploadError ? e.retryable : true;
@@ -183,9 +229,9 @@ async function sendWithRetry(prepared: PreparedUpload, fileName: string, maxAtte
   throw lastError;
 }
 
-async function uploadWithRetry(file: File, maxAttempts = 3) {
+async function uploadWithRetry(file: File, onBytes?: (delta: number) => void, maxAttempts = 3) {
   const prepared = await prepareUpload(file);
-  return sendWithRetry(prepared, file.name, maxAttempts);
+  return sendWithRetry(prepared, file.name, onBytes, maxAttempts);
 }
 
 async function prepareAndPresign(file: File) {
@@ -207,7 +253,8 @@ async function runPool(
   queue: File[],
   poolConcurrency: number,
   errors: string[],
-  onFileDone: () => void
+  onFileDone: () => void,
+  onBytes: (delta: number) => void
 ) {
   async function worker() {
     let file = queue.shift();
@@ -220,13 +267,13 @@ async function runPool(
 
       try {
         if (prefetched) {
-          await putAndFinalize(prefetched.prepared, prefetched.presigned, currentFile.name);
+          await putAndFinalize(prefetched.prepared, prefetched.presigned, currentFile.name, onBytes);
         } else {
           // 미리 준비/주소 발급 자체가 실패했으면 이 파일은 처음부터 다시 시도.
           // uploadWithRetry가 이미 자체적으로 최대 3번 재시도하므로, 이게 실패하면
           // 더 재시도하지 않고 바로 실패 처리함 (안 그러면 아래 catch에서 또
           // uploadWithRetry를 불러서 한 파일에 최대 6번까지 재시도하게 됨)
-          await uploadWithRetry(currentFile);
+          await uploadWithRetry(currentFile, onBytes);
         }
       } catch (e) {
         if (!prefetched) {
@@ -237,7 +284,7 @@ async function runPool(
             // 새로 발급돼서, 원본은 이미 R2에 올라갔는데 썸네일만 실패한
             // 경우 이전 mediaId의 원본이 고아로 남게 됨. 이미 준비된
             // prefetched.prepared(mediaId 포함)를 그대로 재사용해서 재시도함
-            await sendWithRetry(prefetched.prepared, currentFile.name);
+            await sendWithRetry(prefetched.prepared, currentFile.name, onBytes);
           } catch (e2) {
             errors.push(e2 instanceof Error ? e2.message : String(e2));
           }
@@ -250,27 +297,43 @@ async function runPool(
   await Promise.all(Array.from({ length: Math.min(poolConcurrency, queue.length) }, worker));
 }
 
+export type UploadProgress = {
+  done: number;
+  total: number;
+  bytesDone: number;
+  bytesTotal: number;
+};
+
 export async function uploadFiles(
   files: File[],
-  onProgress: (done: number, total: number) => void,
+  onProgress: (progress: UploadProgress) => void,
   concurrency = 4
 ) {
   let done = 0;
   const total = files.length;
+  const bytesTotal = files.reduce((sum, f) => sum + f.size, 0);
+  let bytesDone = 0;
   const errors: string[] = [];
   if (!total) return { errors };
 
+  const report = () =>
+    onProgress({ done, total, bytesDone: Math.min(bytesDone, bytesTotal), bytesTotal });
+
   const onFileDone = () => {
     done++;
-    onProgress(done, total);
+    report();
+  };
+  const onBytes = (delta: number) => {
+    bytesDone += delta;
+    report();
   };
 
   const small = files.filter((f) => f.size < LARGE_FILE_BYTES);
   const large = files.filter((f) => f.size >= LARGE_FILE_BYTES);
 
   await Promise.all([
-    runPool(small, concurrency, errors, onFileDone),
-    runPool(large, 1, errors, onFileDone),
+    runPool(small, concurrency, errors, onFileDone, onBytes),
+    runPool(large, 1, errors, onFileDone, onBytes),
   ]);
 
   return { errors };
