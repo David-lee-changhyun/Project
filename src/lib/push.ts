@@ -67,11 +67,21 @@ export async function enablePush(): Promise<{ ok: boolean; error?: string }> {
       applicationServerKey: urlBase64ToUint8Array(publicKey),
     }));
 
-  await fetch("/api/push/subscribe", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(sub.toJSON()),
-  });
+  let subscribeRes: Response;
+  try {
+    subscribeRes = await fetch("/api/push/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(sub.toJSON()),
+    });
+  } catch {
+    return { ok: false, error: "서버에 알림 설정을 저장하지 못했어요. 네트워크를 확인해주세요." };
+  }
+  // 여기서 응답 확인을 안 하면, 저장이 실패해도 화면엔 "켜짐"으로 나오는데
+  // 실제로는 구독 정보가 DB에 없어서 알림이 하나도 안 가는 상태가 됨
+  if (!subscribeRes.ok) {
+    return { ok: false, error: "서버에 알림 설정을 저장하지 못했어요. 잠시 후 다시 시도해주세요." };
+  }
 
   return { ok: true };
 }

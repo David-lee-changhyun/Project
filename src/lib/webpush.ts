@@ -42,9 +42,17 @@ export async function sendPushToUser(env: CloudflareEnv, userId: string, payload
         // 때마다 계속 헛수고하지 않도록 DB에서 지움
         if (res.status === 404 || res.status === 410) {
           await db.prepare("DELETE FROM push_subscriptions WHERE id = ?").bind(sub.id).run();
+        } else if (!res.ok) {
+          // VAPID 키가 잘못 등록됐거나(예: PUBLIC/PRIVATE 키가 서로 안 맞음)
+          // 하는 문제는 여기서 401/403으로 조용히 실패하는데, 로그가 하나도
+          // 없으면 "알림이 안 온다"는 증상만 보고는 원인을 알 방법이 없어서
+          // wrangler tail로 볼 수 있게 최소한 남겨둠
+          console.error(`push failed: ${res.status} ${await res.text().catch(() => "")}`);
         }
-      } catch {
-        // 네트워크 오류 등은 무시 — 알림 하나 실패했다고 업로드 자체를 실패시키지 않음
+      } catch (e) {
+        // 네트워크 오류 등은 무시(알림 하나 실패했다고 업로드 자체를 실패시키지
+        // 않음)하되, 원인 추적을 위해 로그는 남김
+        console.error("push send threw:", e);
       }
     })
   );
