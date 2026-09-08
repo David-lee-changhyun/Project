@@ -1,4 +1,5 @@
 import { makeThumbnail } from "@/lib/thumbnail";
+import { newId } from "@/lib/ids";
 
 function isHeic(file: File): boolean {
   const type = file.type.toLowerCase();
@@ -54,6 +55,7 @@ async function sha256Hex(buffer: ArrayBuffer): Promise<string> {
 }
 
 type PreparedUpload = {
+  mediaId: string;
   uploadFile: File;
   uploadBuffer: ArrayBuffer;
   thumbnail: File | null;
@@ -63,8 +65,13 @@ type PreparedUpload = {
 
 // 변환/썸네일 생성/해시 계산처럼 무거운 작업은 파일당 한 번만 — 재시도 시
 // 다시 안 돌리도록 분리. 예전엔 서버가 파일을 받으면서 해시를 계산했는데,
-// 이제 서버를 거치지 않고 R2에 직접 올리기 때문에 해시도 여기서 미리 계산해둠
+// 이제 서버를 거치지 않고 R2에 직접 올리기 때문에 해시도 여기서 미리 계산해둠.
+// mediaId도 여기서 한 번만 만들어서 재시도 때 그대로 재사용함 — presign을
+// 다시 부를 때마다 서버가 새 id를 발급하면, 원본은 이미 R2에 올라갔는데
+// 썸네일만 실패해서 재시도하는 경우 새 id로 다시 올라간 원본 때문에
+// 이전 id의 원본이 DB에 연결 안 된 채 R2에 영원히 고아로 남게 됨
 async function prepareUpload(file: File): Promise<PreparedUpload> {
+  const mediaId = newId("media");
   const [takenAt, uploadFile] = await Promise.all([
     extractTakenAt(file),
     isHeic(file) ? convertHeicToJpeg(file) : Promise.resolve(file),
@@ -75,7 +82,7 @@ async function prepareUpload(file: File): Promise<PreparedUpload> {
     uploadFile.arrayBuffer(),
   ]);
   const contentHash = await sha256Hex(uploadBuffer);
-  return { uploadFile, uploadBuffer, thumbnail, takenAt, contentHash };
+  return { mediaId, uploadFile, uploadBuffer, thumbnail, takenAt, contentHash };
 }
 
 async function putDirect(url: string, body: BodyInit, contentType: string, fileName: string) {
@@ -94,7 +101,7 @@ async function putDirect(url: string, body: BodyInit, contentType: string, fileN
   }
 }
 
-type PresignResult = { mediaId: string; uploadUrl: string; thumbnailUploadUrl: string | null };
+type PresignResult = { uploadUrl: string; thumbnailUploadUrl: string | null };
 
 async function requestPresign(prepared: PreparedUpload, fileName: string): Promise<PresignResult> {
   let presignRes: Response;
@@ -103,6 +110,7 @@ async function requestPresign(prepared: PreparedUpload, fileName: string): Promi
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        mediaId: prepared.mediaId,
         fileName: prepared.uploadFile.name,
         contentType: prepared.uploadFile.type,
         thumbnailFileName: prepared.thumbnail?.name,
@@ -133,7 +141,7 @@ async function putAndFinalize(prepared: PreparedUpload, presigned: PresignResult
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        mediaId: presigned.mediaId,
+        mediaId: prepared.mediaId,
         fileName: prepared.uploadFile.name,
         contentType: prepared.uploadFile.type,
         sizeBytes: prepared.uploadFile.size,
@@ -225,7 +233,11 @@ async function runPool(
           errors.push(e instanceof Error ? e.message : String(e));
         } else {
           try {
-            await uploadWithRetry(currentFile);
+            // uploadWithRetry(currentFile)로 처음부터 다시 준비하면 mediaId도
+            // 새로 발급돼서, 원본은 이미 R2에 올라갔는데 썸네일만 실패한
+            // 경우 이전 mediaId의 원본이 고아로 남게 됨. 이미 준비된
+            // prefetched.prepared(mediaId 포함)를 그대로 재사용해서 재시도함
+            await sendWithRetry(prefetched.prepared, currentFile.name);
           } catch (e2) {
             errors.push(e2 instanceof Error ? e2.message : String(e2));
           }
