@@ -9,7 +9,7 @@ import type { MediaItem } from "@/lib/types";
 import MediaThumb from "@/components/MediaThumb";
 import Lightbox from "@/components/Lightbox";
 import AlbumPickerSheet from "@/components/AlbumPickerSheet";
-import { uploadFiles, type UploadProgress } from "@/lib/uploadMedia";
+import { uploadFiles, preloadUploadDeps, type UploadProgress } from "@/lib/uploadMedia";
 
 type ViewMode = "day" | "month" | "year";
 
@@ -71,6 +71,9 @@ export default function Timeline({ filterAlbum, filterLiked }: Props) {
     fetch("/api/users")
       .then((r) => r.json() as Promise<{ users: UserOption[] }>)
       .then((d) => setUsers(d.users ?? []));
+    // 업로드에 필요한 무거운 코드(EXIF/HEIC 변환)를 브라우저가 한가할 때
+    // 미리 받아둬서, 실제로 업로드 버튼을 누르는 순간엔 이미 준비돼 있게 함
+    preloadUploadDeps();
   }, []);
 
   // 업로드 도중 탭을 닫거나 새로고침하려 하면 한 번 경고 (앱 전환 자체는 브라우저 API로 막을 수 없음)
@@ -472,12 +475,19 @@ export default function Timeline({ filterAlbum, filterLiked }: Props) {
                         // 파일 개수가 아니라 실제 전송 바이트 기준으로 움직임 — 파일
                         // 단위로만 움직이면, 크기가 비슷한 사진 여러 장이 대역폭을
                         // 나눠 쓰며 비슷한 시점에 끝날 때 "한참 0%로 멈춰있다가
-                        // 한꺼번에 끝나는" 것처럼 보였음
-                        width: `${
-                          uploadProgress.bytesTotal > 0
-                            ? Math.min(100, (uploadProgress.bytesDone / uploadProgress.bytesTotal) * 100)
-                            : (uploadProgress.done / uploadProgress.total) * 100
-                        }%`,
+                        // 한꺼번에 끝나는" 것처럼 보였음.
+                        // 단, 바이트 전송이 끝나도 서버에 완료 알림을 보내는 절차가
+                        // 남아있어서(그 부분은 바이트로 안 잡힘), 99%까지만 채우고
+                        // 실제로 파일 개수까지 다 맞아떨어져야 100%를 보여줌 —
+                        // 안 그러면 막대는 꽉 찼는데 "0/4"로 남아있는 것처럼 보임
+                        width:
+                          uploadProgress.done === uploadProgress.total
+                            ? "100%"
+                            : `${
+                                uploadProgress.bytesTotal > 0
+                                  ? Math.min(99, (uploadProgress.bytesDone / uploadProgress.bytesTotal) * 100)
+                                  : Math.min(99, (uploadProgress.done / uploadProgress.total) * 100)
+                              }%`,
                       }}
                     />
                   </div>

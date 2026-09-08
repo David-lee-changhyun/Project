@@ -1,6 +1,19 @@
 import { makeThumbnail } from "@/lib/thumbnail";
 import { newId } from "@/lib/ids";
 
+// exifr/heic2any는 초기 페이지 로딩을 가볍게 하려고 업로드 시점에만
+// 동적으로 불러오는데, 그러면 페이지를 새로 연 뒤 "처음" 업로드할 때
+// 그 순간에 청크를 새로 받아오느라(느린 회선일수록 더) 시작이 눈에
+// 띄게 느려짐. 타임라인이 뜨고 브라우저가 한가할 때 미리 받아만
+// 둬서(화면 표시엔 영향 없음), 실제 업로드 시점엔 이미 캐시돼 있게 함
+export function preloadUploadDeps() {
+  const idle = window.requestIdleCallback ?? ((cb: () => void) => setTimeout(cb, 300));
+  idle(() => {
+    import("exifr").catch(() => {});
+    import("heic2any").catch(() => {});
+  });
+}
+
 function isHeic(file: File): boolean {
   const type = file.type.toLowerCase();
   if (type === "image/heic" || type === "image/heif") return true;
