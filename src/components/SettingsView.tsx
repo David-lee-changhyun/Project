@@ -58,12 +58,12 @@ export default function SettingsView() {
             aria-label="업로드 알림 켜기/끄기"
             onClick={toggle}
             disabled={busy || !supported}
-            className={`tap-scale relative h-[26px] w-[44px] shrink-0 rounded-full transition-colors ${
+            className={`tap-scale relative h-[26px] w-[44px] shrink-0 overflow-hidden rounded-full transition-colors ${
               enabled ? "bg-accent" : "bg-border"
             } disabled:opacity-50`}
           >
             <span
-              className={`absolute top-[2px] h-[22px] w-[22px] rounded-full bg-white shadow transition-transform ${
+              className={`absolute left-0 top-[2px] h-[22px] w-[22px] rounded-full bg-white shadow transition-transform ${
                 enabled ? "translate-x-[20px]" : "translate-x-[2px]"
               }`}
             />
