@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
+import { Settings } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import BottomNav from "@/components/BottomNav";
 import Sidebar from "@/components/Sidebar";
-import LogoutButton from "@/components/LogoutButton";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -17,7 +18,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <h1 className="text-[19px] font-semibold tracking-tight">우리 앨범</h1>
           <div className="flex items-center gap-4">
             <span className="text-[13px] text-muted">{user.displayName}</span>
-            <LogoutButton />
+            <Link href="/settings" aria-label="설정" className="tap-scale text-muted">
+              <Settings className="h-5 w-5" strokeWidth={1.8} />
+            </Link>
           </div>
         </header>
         <main className="flex w-full flex-1 flex-col">{children}</main>

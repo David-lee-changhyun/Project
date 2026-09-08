@@ -12,6 +12,7 @@
 - **실제 접속 주소**: https://shared-album.leech-album.workers.dev
 - **가입 초대 코드**: `SIGNUP_INVITE_CODE` 시크릿으로 등록함 (값은 본인만 기억 — 코드에는 저장되지 않음)
 - **R2 직접 업로드용 시크릿(`R2_ACCOUNT_ID`/`R2_ACCESS_KEY_ID`/`R2_SECRET_ACCESS_KEY`)과 R2 버킷 CORS 설정은 아직 안 되어있음** — 아래 "업로드 속도 개선 설정" 섹션을 한 번 진행해야 사진 업로드가 정상 동작합니다.
+- **업로드 알림용 시크릿(`VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_SUBJECT`)과 D1 마이그레이션도 아직 안 되어있음** — 아래 "업로드 알림(웹 푸시) 설정" 섹션을 한 번 진행해야 알림이 동작합니다.
 
 이 정보들은 `wrangler.jsonc` 파일(D1/R2 id)과 Cloudflare 대시보드(계정 설정)에 이미 반영되어 있어서, 저장소를 다시 클론만 하면 별도로 재생성할 필요 없습니다.
 
@@ -61,6 +62,35 @@ npx wrangler secret put R2_SECRET_ACCESS_KEY
 4. 저장
 
 이후 배포/재배포는 평소처럼 `npm run cf:deploy`만 하면 됩니다. 위 설정은 계정/버킷 단위라 앱을 재배포해도 다시 할 필요 없습니다.
+
+---
+
+## 업로드 알림(웹 푸시) 설정 — 최초 1회만
+
+한 사람이 사진/동영상을 올리면 상대방 핸드폰에 "OO님이 사진 3장을 올렸어요" 같은 푸시 알림이 가는 기능입니다. 알림을 보내려면 서버가 자기 자신을 증명하는 키 쌍(VAPID 키)이 한 번만 등록되어 있어야 합니다.
+
+### 1. D1에 push_subscriptions 테이블 추가 (마이그레이션 1개 추가됨)
+```powershell
+npx wrangler d1 migrations apply shared-album-db --remote
+```
+
+### 2. 시크릿 3개 등록
+이미 생성해둔 키를 그대로 씁니다(이 앱 전용이라 다시 만들 필요 없음):
+```powershell
+npx wrangler secret put VAPID_PUBLIC_KEY
+# 값: BBfpyM2chTrpPJs7LiwrlIxFIBcL7DvYmhF1Y7DpWXohwDi9ZMSOjacYYU3x84EI_1tFfoPOW7u9jC-VBhDJ1zQ
+
+npx wrangler secret put VAPID_PRIVATE_KEY
+# 값: E8gllnuP7Qbkr4UFqDvzoUA_wM6y6709O_7Ky-e5-Co
+
+npx wrangler secret put VAPID_SUBJECT
+# 값: mailto:noreply@example.com  (푸시 서비스에 남는 연락처 형식 값, 원하면 본인 이메일로 바꿔도 됨)
+```
+
+### 3. 설정 탭에서 알림 켜기
+배포 후 앱 접속 → 하단(모바일) 또는 좌측(PC) 설정 아이콘 → "업로드 알림" 토글 켜기 → 브라우저가 알림 권한을 물어보면 허용. **두 사람 모두** 각자 기기에서 켜야 서로에게 알림이 갑니다.
+
+아이폰(사파리)은 홈 화면에 "추가"해서 설치한 상태(iOS 16.4 이상)에서만 알림을 받을 수 있습니다. 브라우저 탭 상태로는 알림이 오지 않습니다.
 
 ---
 

@@ -7,4 +7,8 @@ interface CloudflareEnv {
   R2_ACCOUNT_ID: string;
   R2_ACCESS_KEY_ID: string;
   R2_SECRET_ACCESS_KEY: string;
+  // 웹 푸시 알림 발송용 VAPID 키 (업로드 알림 기능)
+  VAPID_PUBLIC_KEY: string;
+  VAPID_PRIVATE_KEY: string;
+  VAPID_SUBJECT: string;
 }

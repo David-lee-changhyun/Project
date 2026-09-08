@@ -231,7 +231,19 @@ export default function Timeline({ filterAlbum, filterLiked }: Props) {
     const { errors } = await uploadFiles(pendingFiles, (done, total) => setUploadProgress({ done, total }));
     setUploadProgress(null);
     setPendingFiles(null);
-    if (errors.length) alert(`일부 업로드 실패:\n${errors.join("\n")}`);
+    if (errors.length) {
+      alert(`일부 업로드 실패:\n${errors.join("\n")}`);
+    } else {
+      // 실패가 하나도 없을 때만 상대방에게 알림 — 파일별로 안 보내고 배치가
+      // 다 끝난 뒤 한 번만 개수를 모아서 보냄(사진 10장 올릴 때 알림 10번 X)
+      const photoCount = pendingFiles.filter((f) => !f.type.startsWith("video/")).length;
+      const videoCount = pendingFiles.filter((f) => f.type.startsWith("video/")).length;
+      fetch("/api/media/notify-upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photoCount, videoCount }),
+      }).catch(() => {});
+    }
 
     // 방금 올린 사진들만 최신 목록에서 가져와 앞에 끼워 넣음. 예전엔 목록
     // 전체를 비우고 처음부터 다시 불러왔는데, 그러면 이미 "더 보기"로

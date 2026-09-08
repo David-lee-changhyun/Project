@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Image as ImageIcon, LayoutGrid, CalendarDays } from "lucide-react";
-import LogoutButton from "@/components/LogoutButton";
+import { Image as ImageIcon, LayoutGrid, CalendarDays, Settings } from "lucide-react";
 
 const tabs = [
   { href: "/", label: "타임라인", Icon: ImageIcon },
@@ -48,7 +47,9 @@ export default function Sidebar({ displayName }: { displayName: string }) {
 
       <div className="mt-auto flex items-center justify-between px-2 pt-4">
         <span className="text-[13px] text-muted">{displayName}</span>
-        <LogoutButton />
+        <Link href="/settings" aria-label="설정" className="tap-scale text-muted">
+          <Settings className="h-5 w-5" strokeWidth={1.8} />
+        </Link>
       </div>
     </aside>
   );
