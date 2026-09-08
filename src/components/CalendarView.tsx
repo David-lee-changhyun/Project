@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   differenceInCalendarDays,
@@ -31,6 +31,7 @@ function PhotoCalendar() {
   const router = useRouter();
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const monthInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const from = month.getTime();
@@ -62,10 +63,10 @@ function PhotoCalendar() {
   }, [month]);
 
   return (
-    <section className="mb-8">
+    <section className="mt-8 mb-8">
       <div className="mb-2 flex items-center justify-between px-1">
         <h2 className="text-[13px] font-semibold uppercase tracking-wide text-muted">사진 달력</h2>
-        <div className="flex items-center gap-1">
+        <div className="relative flex items-center gap-1">
           <button
             onClick={() => setMonth((m) => subMonths(m, 1))}
             aria-label="이전 달"
@@ -73,9 +74,31 @@ function PhotoCalendar() {
           >
             <ChevronLeft className="h-4 w-4" strokeWidth={2.2} />
           </button>
-          <span className="min-w-[76px] text-center text-[13px] font-medium text-foreground">
+          <button
+            onClick={() => {
+              const el = monthInputRef.current as (HTMLInputElement & { showPicker?: () => void }) | null;
+              if (!el) return;
+              if (el.showPicker) el.showPicker();
+              else el.focus();
+            }}
+            aria-label="연도/월 선택"
+            className="tap-scale min-w-[76px] text-center text-[13px] font-medium text-foreground"
+          >
             {format(month, "yyyy년 M월", { locale: ko })}
-          </span>
+          </button>
+          <input
+            ref={monthInputRef}
+            type="month"
+            value={format(month, "yyyy-MM")}
+            onChange={(e) => {
+              if (!e.target.value) return;
+              const [y, m] = e.target.value.split("-").map(Number);
+              setMonth(new Date(y, m - 1, 1));
+            }}
+            aria-hidden="true"
+            tabIndex={-1}
+            className="absolute right-0 top-0 h-px w-px opacity-0"
+          />
           <button
             onClick={() => setMonth((m) => addMonths(m, 1))}
             aria-label="다음 달"
