@@ -94,8 +94,9 @@ async function putDirect(url: string, body: BodyInit, contentType: string, fileN
   }
 }
 
-// 1) presign 요청 -> 2) R2에 직접 PUT(서버를 거치지 않음) -> 3) 완료 알림(메타데이터 저장)
-async function sendUpload(prepared: PreparedUpload, fileName: string) {
+type PresignResult = { mediaId: string; uploadUrl: string; thumbnailUploadUrl: string | null };
+
+async function requestPresign(prepared: PreparedUpload, fileName: string): Promise<PresignResult> {
   let presignRes: Response;
   try {
     presignRes = await fetch("/api/media/presign", {
@@ -114,16 +115,15 @@ async function sendUpload(prepared: PreparedUpload, fileName: string) {
     const data = (await presignRes.json().catch(() => ({}))) as { error?: string };
     throw new UploadError(data.error ?? `업로드 준비 실패: ${fileName}`, presignRes.status >= 500);
   }
-  const { mediaId, uploadUrl, thumbnailUploadUrl } = (await presignRes.json()) as {
-    mediaId: string;
-    uploadUrl: string;
-    thumbnailUploadUrl: string | null;
-  };
+  return presignRes.json();
+}
 
+// R2에 직접 PUT(서버를 거치지 않음) -> 완료 알림(메타데이터 저장)
+async function putAndFinalize(prepared: PreparedUpload, presigned: PresignResult, fileName: string) {
   await Promise.all([
-    putDirect(uploadUrl, prepared.uploadBuffer, prepared.uploadFile.type, fileName),
-    thumbnailUploadUrl && prepared.thumbnail
-      ? putDirect(thumbnailUploadUrl, await prepared.thumbnail.arrayBuffer(), "image/jpeg", fileName)
+    putDirect(presigned.uploadUrl, prepared.uploadBuffer, prepared.uploadFile.type, fileName),
+    presigned.thumbnailUploadUrl && prepared.thumbnail
+      ? putDirect(presigned.thumbnailUploadUrl, await prepared.thumbnail.arrayBuffer(), "image/jpeg", fileName)
       : Promise.resolve(),
   ]);
 
@@ -133,7 +133,7 @@ async function sendUpload(prepared: PreparedUpload, fileName: string) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        mediaId,
+        mediaId: presigned.mediaId,
         fileName: prepared.uploadFile.name,
         contentType: prepared.uploadFile.type,
         sizeBytes: prepared.uploadFile.size,
@@ -159,12 +159,12 @@ function sleep(ms: number) {
 // 네트워크 문제로 실패하면 최대 2번 더 재시도 (파일당 최대 3번 시도).
 // prepareUpload(변환/썸네일/해시)는 재시도 때마다 다시 돌리지 않고 재사용하되,
 // presign은 매 시도마다 새로 받음 (서명 URL이 만료됐을 가능성 대비)
-async function uploadWithRetry(file: File, maxAttempts = 3) {
-  const prepared = await prepareUpload(file);
+async function sendWithRetry(prepared: PreparedUpload, fileName: string, maxAttempts = 3) {
   let lastError: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      return await sendUpload(prepared, file.name);
+      const presigned = await requestPresign(prepared, fileName);
+      return await putAndFinalize(prepared, presigned, fileName);
     } catch (e) {
       lastError = e;
       const retryable = e instanceof UploadError ? e.retryable : true;
@@ -175,6 +175,11 @@ async function uploadWithRetry(file: File, maxAttempts = 3) {
   throw lastError;
 }
 
+async function uploadWithRetry(file: File, maxAttempts = 3) {
+  const prepared = await prepareUpload(file);
+  return sendWithRetry(prepared, file.name, maxAttempts);
+}
+
 // 큰 파일(주로 동영상)은 여러 개를 동시에 올려도 모바일 업로드 대역폭을
 // 나눠 갖기만 할 뿐 실제로 더 빨라지진 않고, 오히려 배터리/네트워크
 // 사정으로 하나씩 끊길 위험만 커짐. 작은 사진들은 지금처럼 여러 개를
@@ -182,10 +187,30 @@ async function uploadWithRetry(file: File, maxAttempts = 3) {
 // 큰 파일은 한 번에 하나씩만 보내도록 큐를 나눔
 const LARGE_FILE_BYTES = 20 * 1024 * 1024;
 
+// Wi-Fi/유선처럼 대역폭이 넉넉한 연결에서는 동시 전송 여러 개가 실제로
+// 도움이 되지만(연결 하나가 대역폭을 다 못 채우는 경우가 많아서), LTE 같은
+// 셀룰러 회선은 업로드 대역폭 자체가 좁고 공유 자원이라 여러 개를 동시에
+// 보내봤자 서로 나눠 가지기만 할 뿐 총 시간은 안 줄고, 오히려 각 연결의
+// 혼잡 제어가 서로 간섭해서 더 늦어질 수 있음. Network Information API로
+// 셀룰러가 감지되면 사진/동영상 구분 없이 그냥 한 번에 하나씩만 보냄
+// (iOS Safari는 이 API가 없어서 감지가 안 되면 기존처럼 동작)
+function isCellularConnection(): boolean {
+  const nav = navigator as Navigator & {
+    connection?: { type?: string; effectiveType?: string; saveData?: boolean };
+  };
+  const conn = nav.connection;
+  if (!conn) return false;
+  if (conn.saveData) return true;
+  if (conn.type === "cellular") return true;
+  if (conn.effectiveType && /2g|3g/.test(conn.effectiveType)) return true;
+  return false;
+}
+
 // 동시 업로드 개수를 제한해서 여러 장을 안정적으로 업로드.
 // 작은 사진 큐(최대 concurrency개)와 큰 파일 큐(최대 1개)가 동시에 돌기
-// 때문에 순간 최대 동시 요청 수는 concurrency + 1이 될 수 있음 — 의도된
-// 동작으로, 사진들끼리는 병렬로 겹치되 큰 파일끼리만 경합하지 않게 하는 것이 목적
+// 때문에 순간 최대 동시 요청 수는 concurrency + 1이 될 수 있음 — 와이파이
+// 등에서는 의도된 동작(사진들끼리는 병렬로 겹치되 큰 파일끼리만 경합 방지).
+// 셀룰러가 감지되면 이 병렬 풀 자체를 안 쓰고 아래에서 전부 직렬로 처리함
 export async function uploadFiles(
   files: File[],
   onProgress: (done: number, total: number) => void,
@@ -211,6 +236,51 @@ export async function uploadFiles(
       }
     }
     await Promise.all(Array.from({ length: Math.min(poolConcurrency, queue.length) }, worker));
+  }
+
+  // 셀룰러에서는 파일을 하나씩 순서대로 보내되, "다음 파일 준비(HEIC 변환/
+  // 썸네일/해시)와 업로드 주소 발급"을 지금 파일이 실제로 전송되는 동안 미리
+  // 진행해둠. presign 요청은 몇 KB짜리 JSON이라 몇 MB~수십 MB인 실제 파일
+  // 전송과 같이 나가도 대역폭을 거의 안 먹는 반면, 이걸 미리 안 해두면
+  // 파일마다 "주소 받기 왕복 시간"이 그대로 대기 시간으로 쌓임
+  async function runPipelinedSerial(queue: File[]) {
+    if (!queue.length) return;
+
+    async function prepareAndPresign(file: File) {
+      const prepared = await prepareUpload(file);
+      const presigned = await requestPresign(prepared, file.name);
+      return { prepared, presigned };
+    }
+
+    let next = prepareAndPresign(queue[0]).catch(() => null);
+    for (let i = 0; i < queue.length; i++) {
+      const file = queue[i];
+      const prefetched = await next;
+      next = i + 1 < queue.length ? prepareAndPresign(queue[i + 1]).catch(() => null) : Promise.resolve(null);
+
+      try {
+        if (prefetched) {
+          await putAndFinalize(prefetched.prepared, prefetched.presigned, file.name);
+        } else {
+          // 미리 준비/주소 발급이 실패했으면 이 파일은 처음부터 다시 시도
+          await uploadWithRetry(file);
+        }
+      } catch {
+        try {
+          await uploadWithRetry(file);
+        } catch (e) {
+          errors.push(e instanceof Error ? e.message : String(e));
+        }
+      } finally {
+        done++;
+        onProgress(done, total);
+      }
+    }
+  }
+
+  if (isCellularConnection()) {
+    await runPipelinedSerial([...files]);
+    return { errors };
   }
 
   const small = files.filter((f) => f.size < LARGE_FILE_BYTES);
