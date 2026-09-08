@@ -9,7 +9,7 @@ import type { MediaItem } from "@/lib/types";
 import MediaThumb from "@/components/MediaThumb";
 import Lightbox from "@/components/Lightbox";
 import AlbumPickerSheet from "@/components/AlbumPickerSheet";
-import { uploadFiles, preloadUploadDeps, type UploadProgress } from "@/lib/uploadMedia";
+import { uploadFiles, preloadUploadDeps } from "@/lib/uploadMedia";
 
 type ViewMode = "day" | "month" | "year";
 
@@ -56,7 +56,7 @@ export default function Timeline({ filterAlbum, filterLiked }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [pendingFiles, setPendingFiles] = useState<File[] | null>(null);
-  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [users, setUsers] = useState<UserOption[]>([]);
   const [uploaderFilter, setUploaderFilter] = useState<string | null>(null);
@@ -227,9 +227,8 @@ export default function Timeline({ filterAlbum, filterLiked }: Props) {
     if (!pendingFiles?.length) return;
     const wasEmpty = items.length === 0;
     const prevTopTakenAt = items[0]?.takenAt ?? null;
-    const bytesTotal = pendingFiles.reduce((sum, f) => sum + f.size, 0);
-    setUploadProgress({ done: 0, total: pendingFiles.length, bytesDone: 0, bytesTotal });
-    const { errors } = await uploadFiles(pendingFiles, setUploadProgress);
+    setUploadProgress({ done: 0, total: pendingFiles.length });
+    const { errors } = await uploadFiles(pendingFiles, (done, total) => setUploadProgress({ done, total }));
     setUploadProgress(null);
     setPendingFiles(null);
     if (errors.length) alert(`일부 업로드 실패:\n${errors.join("\n")}`);
@@ -471,24 +470,7 @@ export default function Timeline({ filterAlbum, filterLiked }: Props) {
                   <div className="mb-1.5 h-1.5 w-full overflow-hidden rounded-full bg-border">
                     <div
                       className="h-full bg-accent transition-all"
-                      style={{
-                        // 파일 개수가 아니라 실제 전송 바이트 기준으로 움직임 — 파일
-                        // 단위로만 움직이면, 크기가 비슷한 사진 여러 장이 대역폭을
-                        // 나눠 쓰며 비슷한 시점에 끝날 때 "한참 0%로 멈춰있다가
-                        // 한꺼번에 끝나는" 것처럼 보였음.
-                        // 단, 바이트 전송이 끝나도 서버에 완료 알림을 보내는 절차가
-                        // 남아있어서(그 부분은 바이트로 안 잡힘), 99%까지만 채우고
-                        // 실제로 파일 개수까지 다 맞아떨어져야 100%를 보여줌 —
-                        // 안 그러면 막대는 꽉 찼는데 "0/4"로 남아있는 것처럼 보임
-                        width:
-                          uploadProgress.done === uploadProgress.total
-                            ? "100%"
-                            : `${
-                                uploadProgress.bytesTotal > 0
-                                  ? Math.min(99, (uploadProgress.bytesDone / uploadProgress.bytesTotal) * 100)
-                                  : Math.min(99, (uploadProgress.done / uploadProgress.total) * 100)
-                              }%`,
-                      }}
+                      style={{ width: `${(uploadProgress.done / uploadProgress.total) * 100}%` }}
                     />
                   </div>
                   <p className="text-[13px] text-muted">
