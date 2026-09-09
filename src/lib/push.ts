@@ -60,12 +60,20 @@ export async function enablePush(): Promise<{ ok: boolean; error?: string }> {
     return { ok: false, error: "알림 설정 중 오류가 발생했어요." };
   }
 
-  const sub =
-    (await reg.pushManager.getSubscription()) ??
-    (await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(publicKey),
-    }));
+  let sub: PushSubscription;
+  try {
+    sub =
+      (await reg.pushManager.getSubscription()) ??
+      (await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      }));
+  } catch {
+    // 브라우저/OS 쪽 제약(구독 개수 제한, 일시적인 푸시 서비스 오류 등)으로
+    // subscribe() 자체가 실패할 수 있음 — 감싸지 않으면 조용히 실패해서
+    // 사용자는 아무 에러도 못 보고 토글만 다시 꺼지는 것처럼 보임
+    return { ok: false, error: "알림 등록에 실패했어요. 잠시 후 다시 시도해주세요." };
+  }
 
   let subscribeRes: Response;
   try {
@@ -75,11 +83,15 @@ export async function enablePush(): Promise<{ ok: boolean; error?: string }> {
       body: JSON.stringify(sub.toJSON()),
     });
   } catch {
+    // 서버 저장에 실패했는데 브라우저 쪽 구독만 남아있으면, 다음에 설정
+    // 화면을 열었을 때 isPushSubscribed()가 이 구독을 보고 "켜짐"으로
+    // 잘못 표시함(서버엔 없는데 켜진 것처럼 보여서 알림이 계속 안 감) —
+    // 그래서 저장이 끝까지 안 됐으면 브라우저 구독도 같이 되돌림
+    await sub.unsubscribe().catch(() => {});
     return { ok: false, error: "서버에 알림 설정을 저장하지 못했어요. 네트워크를 확인해주세요." };
   }
-  // 여기서 응답 확인을 안 하면, 저장이 실패해도 화면엔 "켜짐"으로 나오는데
-  // 실제로는 구독 정보가 DB에 없어서 알림이 하나도 안 가는 상태가 됨
   if (!subscribeRes.ok) {
+    await sub.unsubscribe().catch(() => {});
     return { ok: false, error: "서버에 알림 설정을 저장하지 못했어요. 잠시 후 다시 시도해주세요." };
   }
 
